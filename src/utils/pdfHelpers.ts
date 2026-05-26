@@ -31,6 +31,24 @@ export interface LayoutPage {
   lines: LayoutLine[];
 }
 
+export function sanitizeForWinAnsi(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/[\u201c\u201d]/g, '"') // double quotes “”
+    .replace(/[\u2018\u2019]/g, "'") // single quotes ‘’
+    .replace(/\u2014/g, '--')       // em-dash —
+    .replace(/\u2013/g, '-')        // en-dash –
+    .replace(/\u2026/g, '...')      // ellipsis …
+    .replace(/\r?\n/g, ' ')         // newline to space
+    .replace(/\t/g, ' ')            // tab to space
+    .replace(/[^\x00-\xFF]/g, (char) => {
+      const charCode = char.charCodeAt(0);
+      if (charCode === 0x200B || charCode === 0xFEFF) return ''; // zero-width spaces
+      if (charCode === 0x00A0) return ' '; // non-breaking space
+      return '?'; // fallback for unsupported higher unicode
+    });
+}
+
 /**
  * Super lightweight book typesetter.
  * Receives the settings and structured chapters, wraps text, and packs lines into mirror-margined print-ready pages.
@@ -56,37 +74,76 @@ export function typesetManuscript(
   const pagesList: LayoutPage[] = [];
   let pageNumber = 1;
 
-  // Title Page & Copyright Page if included
+  // Title Page & Copyright Page if included - formatted to avoid newline \n insertion
   if (settings.includeTitlePage) {
+    const titleLines: LayoutLine[] = [];
+    // Spacer lines represented by empty strings
+    for (let i = 0; i < 4; i++) {
+      titleLines.push({ text: '', isHeading: false });
+    }
+    titleLines.push({ text: settings.bookTitle.toUpperCase(), isHeading: true });
+    
+    if (settings.bookSubtitle) {
+      titleLines.push({ text: '', isHeading: false });
+      titleLines.push({ text: settings.bookSubtitle, isHeading: false });
+    }
+    
+    for (let i = 0; i < 3; i++) {
+      titleLines.push({ text: '', isHeading: false });
+    }
+    titleLines.push({ text: 'BY', isHeading: false });
+    titleLines.push({ text: '', isHeading: false });
+    titleLines.push({ text: settings.authorName.toUpperCase(), isHeading: false });
+    
+    for (let i = 0; i < 6; i++) {
+      titleLines.push({ text: '', isHeading: false });
+    }
+    if (settings.publisherName) {
+      titleLines.push({ text: settings.publisherName, isHeading: false });
+    }
+
     pagesList.push({
       pageNumber: pageNumber++,
-      lines: [
-        { text: '\n\n\n\n', isHeading: false },
-        { text: settings.bookTitle.toUpperCase(), isHeading: true },
-        { text: settings.bookSubtitle ? '\n' + settings.bookSubtitle : '', isHeading: false },
-        { text: '\n\n\nBY\n\n' + settings.authorName.toUpperCase(), isHeading: false },
-        { text: '\n\n\n\n\n\n\n\n' + (settings.publisherName || ''), isHeading: false }
-      ]
+      lines: titleLines
     });
   }
 
   if (settings.includeCopyrightPage) {
+    const copyrightLines: LayoutLine[] = [];
+    copyrightLines.push({ text: 'COPYRIGHT PAGE', isHeading: true });
+    copyrightLines.push({ text: '', isHeading: false });
+    copyrightLines.push({ 
+      text: `Copyright © ${settings.copyrightYear || '2026'} by ${settings.authorName || 'Author'}.`, 
+      isHeading: false 
+    });
+    copyrightLines.push({ text: '', isHeading: false });
+    
+    // Wrap copyright text nicely
+    const contentWidthPts = widthPts - inchesToPts(settings.insideMargin) - inchesToPts(settings.outsideMargin);
+    const textToWrap = 'All rights reserved. No part of this publication may be reproduced, distributed, or transmitted in any form or by any means, including photocopying, recording, or other electronic or mechanical methods, without the prior written permission of the publisher, except in the case of brief quotations embodied in critical reviews and certain other noncommercial uses permitted by copyright law.';
+    const wrappedCopyright = wrapParagraph_internal(textToWrap, contentWidthPts);
+    
+    for (const wrapLine of wrappedCopyright) {
+      copyrightLines.push({ text: wrapLine, isHeading: false });
+    }
+    
+    if (settings.isbn) {
+      copyrightLines.push({ text: '', isHeading: false });
+      copyrightLines.push({ text: `ISBN: ${settings.isbn}`, isHeading: false });
+    }
+    
+    copyrightLines.push({ text: '', isHeading: false });
+    copyrightLines.push({ text: `Published by ${settings.publisherName || 'PublishingForge Printer'}`, isHeading: false });
+
     pagesList.push({
       pageNumber: pageNumber++,
-      lines: [
-        { text: 'COPYRIGHT PAGE\n', isHeading: true },
-        { text: `Copyright © ${settings.copyrightYear || '2026'} by ${settings.authorName || 'Author'}.`, isHeading: false },
-        { text: 'All rights reserved. No part of this publication may be reproduced, distributed, or transmitted in any form or by any means, including photocopying, recording, or other electronic or mechanical methods, without the prior written permission of the publisher, except in the case of brief quotations embodied in critical reviews and certain other noncommercial uses permitted by copyright law.', isHeading: false },
-        { text: settings.isbn ? `\nISBN: ${settings.isbn}` : '', isHeading: false },
-        { text: `\nPublished by ${settings.publisherName || 'PublishingForge Printer'}`, isHeading: false }
-      ]
+      lines: copyrightLines
     });
   }
 
   // Helper to split paragraph text into wrap-compliant lines based on page width
-  const wrapParagraph = (text: string, maxWidthPts: number, isH1: boolean): string[] => {
+  function wrapParagraph_internal(text: string, maxWidthPts: number, isH1: boolean = false): string[] {
     const fontSize = isH1 ? h1Size : bodySize;
-    // Estimate max chars per line
     const avgCharWidth = fontSize * charWidthApprox;
     const maxChars = Math.floor(maxWidthPts / avgCharWidth);
 
@@ -108,9 +165,9 @@ export function typesetManuscript(
       linesStr.push(currentLine);
     }
     return linesStr;
-  };
+  }
 
-  // Typesetting Loop for Each Chapter
+  // TYPESETTING LOOP FOR EACH CHAPTER
   for (const chap of chapters) {
     let currentLines: LayoutLine[] = [];
 
@@ -130,8 +187,6 @@ export function typesetManuscript(
       const displayPrefix = shouldIndent ? '      ' : ''; // indent spacer approx
       const textToWrap = displayPrefix + pText;
 
-      // Layout margins depend on Odd vs Even page positioning (Mirror margins)
-      // Since margins can alternate, we fetch standard margins to measure remaining width
       const isOdd = pageNumber % 2 !== 0;
       const insideM = inchesToPts(settings.insideMargin);
       const outsideM = inchesToPts(settings.outsideMargin);
@@ -139,7 +194,7 @@ export function typesetManuscript(
       const activeRightMargin = isOdd ? outsideM : insideM;
       const contentWidthPts = widthPts - activeLeftMargin - activeRightMargin;
 
-      const wrappedLines = wrapParagraph(textToWrap, contentWidthPts, false);
+      const wrappedLines = wrapParagraph_internal(textToWrap, contentWidthPts, false);
 
       for (const line of wrappedLines) {
         currentLines.push({ text: line, isHeading: false });
@@ -151,7 +206,7 @@ export function typesetManuscript(
       }
     }
 
-    // Now, pack this long stream of layout lines into physical pages!
+    // Pack layout lines into physical pages
     const topM = inchesToPts(settings.topMargin);
     const bottomM = inchesToPts(settings.bottomMargin);
     const availableHeightPts = heightPts - topM - bottomM - 36; // leave room for headers/footers
@@ -164,7 +219,6 @@ export function typesetManuscript(
       const lineSpacing = line.isHeading ? h1Leading : leading;
 
       if (currentHeightSum + lineSpacing > availableHeightPts) {
-        // Page is full! Save it
         pagesList.push({
           pageNumber: pageNumber++,
           chapterTitle: chap.title,
@@ -174,8 +228,6 @@ export function typesetManuscript(
         currentHeightSum = 0;
       }
 
-      // If chapter headings must absolutely start on a new page and this is an H1,
-      // force page break unless current page is already empty
       if (line.isHeading && settings.chapterStartNewPage && activePageLines.length > 0) {
         pagesList.push({
           pageNumber: pageNumber++,
@@ -190,7 +242,6 @@ export function typesetManuscript(
       currentHeightSum += lineSpacing;
     }
 
-    // Append last page of chapter
     if (activePageLines.length > 0) {
       pagesList.push({
         pageNumber: pageNumber++,
@@ -314,11 +365,10 @@ export async function compileCoverPDF(settings: CoverSettings, coverImageBlob: B
 
   // Draw spine text (Rotate 270 degrees clockwise or 90 degrees counter-clockwise)
   if (settings.spineTitle && spineWidth >= 0.25) {
-    // Standard built-in serif font for pdf compilation safety
     const font = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
     const titleText = settings.spineTitle.toUpperCase();
     const authorText = settings.spineAuthor ? ` — ${settings.spineAuthor}` : '';
-    const fullText = titleText + authorText;
+    const fullText = sanitizeForWinAnsi(titleText + authorText);
 
     // Center along vertical height
     const spineClientFontSize = settings.spineFontSize || 10;
@@ -343,7 +393,8 @@ export async function compileCoverPDF(settings: CoverSettings, coverImageBlob: B
 
     // Draw description synopsis
     if (settings.backDescription) {
-      const synWords = settings.backDescription.split(' ');
+      const sanitizedBackDesc = sanitizeForWinAnsi(settings.backDescription);
+      const synWords = sanitizedBackDesc.split(' ');
       let currentLine = '';
       let yOffset = totalHeightPts - inchesToPts(0.8);
       const startX = inchesToPts(0.6);
@@ -435,10 +486,11 @@ export async function compileInteriorPDF(
 
     // Header Setup
     if (settings.showRunningHeaders && pData.pageNumber > 2) {
-      const headerText = isOdd 
+      const headerTextText = isOdd 
         ? (settings.headerOddText || settings.authorName).toUpperCase()
         : (settings.headerEvenText || settings.bookTitle).toUpperCase();
       
+      const headerText = sanitizeForWinAnsi(headerTextText);
       const headWidth = fontRegular.widthOfTextAtSize(headerText, 8);
       const headX = (widthPts - headWidth) / 2;
       page.drawText(headerText, {
@@ -466,12 +518,14 @@ export async function compileInteriorPDF(
     const h1Leading = h1Size * 1.3;
 
     for (const line of pData.lines) {
+      const lineText = sanitizeForWinAnsi(line.text);
+      
       if (line.isHeading) {
         // Center Heading text
-        const hWidth = fontBold.widthOfTextAtSize(line.text, h1Size);
+        const hWidth = fontBold.widthOfTextAtSize(lineText, h1Size);
         const hX = (widthPts - hWidth) / 2;
         cursorY -= h1Leading;
-        page.drawText(line.text, {
+        page.drawText(lineText, {
           x: hX,
           y: cursorY,
           size: h1Size,
@@ -481,9 +535,9 @@ export async function compileInteriorPDF(
         cursorY -= 12; // extra padding after heading
       } else if (line.isOrnament) {
         // Center chapter star ornaments
-        const oWidth = fontRegular.widthOfTextAtSize(line.text, 10);
+        const oWidth = fontRegular.widthOfTextAtSize(lineText, 10);
         const oX = (widthPts - oWidth) / 2;
-        page.drawText(line.text, {
+        page.drawText(lineText, {
           x: oX,
           y: cursorY,
           size: 10,
@@ -493,10 +547,7 @@ export async function compileInteriorPDF(
         cursorY -= leading;
       } else {
         // Standard body paragraph line
-        // We will just left-align or fully-justify based on user settings
-        // Full-justification requires measuring characters or simple spaced drawing.
-        // For standard client compile, left-aligned has high safety and looks clean:
-        page.drawText(line.text, {
+        page.drawText(lineText, {
           x: leftMargin,
           y: cursorY,
           size: bodySize,
