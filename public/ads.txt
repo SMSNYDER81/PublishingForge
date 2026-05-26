@@ -1,0 +1,2 @@
+# Google AdSense Ads.txt for PublishingForge
+google.com, pub-7814690967688754, DIRECT, f08c47fec0942fa0

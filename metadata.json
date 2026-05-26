@@ -1,0 +1,6 @@
+{
+  "name": "PublishingForge",
+  "description": "Free KDP & IngramSpark Book Cover Builder + Interior PDF Formatter",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

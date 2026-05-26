@@ -1,0 +1,12 @@
+# Sitemaps configuration for search indexing
+Sitemap: https://publishingforge.com/sitemap.xml
+
+# Standard crawler instructions - Crawl everything, optimize speed
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /tmp/
+Disallow: /cache/
+
+# Focus on friendly crawling
+Crawl-delay: 1
