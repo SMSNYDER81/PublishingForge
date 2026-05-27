@@ -34,6 +34,12 @@ export default function AIAssistant({
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
 
+  // Custom LocalStorage User API key override
+  const [customKey, setCustomKey] = useState<string>(() => {
+    return localStorage.getItem('user_gemini_api_key') || '';
+  });
+  const [showKeyConfig, setShowKeyConfig] = useState<boolean>(false);
+
   // Form parameters
   const [genre, setGenre] = useState<string>(defaultGenre);
   const [tone, setTone] = useState<string>('Compelling & Dramatic');
@@ -96,9 +102,14 @@ export default function AIAssistant({
     setSuccessMsg(null);
 
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (customKey.trim()) {
+        headers['X-Gemini-API-Key'] = customKey.trim();
+      }
+
       const response = await fetch('/api/ai/optimize', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           action: activeTab,
           text: textInput,
@@ -194,7 +205,60 @@ export default function AIAssistant({
       </div>
 
       {isExpanded && (
-        <div className="p-4 md:p-5 space-y-4">
+        <div className="p-4 md:p-5 space-y-4 font-sans">
+          
+          {/* Custom API Key input drawer info */}
+          <div className="bg-slate-950/40 p-2.5 text-[11px] rounded-lg border border-slate-800/80 flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-slate-300">
+              <Key className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+              API Key Mode: {customKey.trim() ? (
+                <span className="text-emerald-400 font-bold font-mono">Custom Key (Active)</span>
+              ) : (
+                <span className="text-slate-400 font-mono text-[10px]">Default Server Key</span>
+              )}
+            </span>
+            <button 
+              type="button"
+              onClick={() => setShowKeyConfig(!showKeyConfig)}
+              className="text-indigo-400 hover:text-indigo-300 underline font-mono font-bold hover:no-underline transition-all"
+            >
+              {showKeyConfig ? 'Hide Key Configuration' : 'Change Key'}
+            </button>
+          </div>
+
+          {showKeyConfig && (
+            <div className="bg-slate-950/80 p-3 rounded-lg border border-slate-800 space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-[10px] font-mono font-bold text-slate-300 uppercase">Your Personal Gemini Key</span>
+                <a 
+                  href="https://aistudio.google.com/" 
+                  target="_blank" 
+                  rel="noreferrer" 
+                  className="text-[10px] text-indigo-400 hover:underline font-bold"
+                >
+                  Get free key &rarr;
+                </a>
+              </div>
+              <input
+                type="password"
+                value={customKey}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCustomKey(val);
+                  if (val.trim()) {
+                    localStorage.setItem('user_gemini_api_key', val.trim());
+                  } else {
+                    localStorage.removeItem('user_gemini_api_key');
+                  }
+                }}
+                placeholder="Paste Gemini API Key (AIzaSy...)"
+                className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white font-mono tracking-wider placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+              />
+              <p className="text-[10px] text-slate-400 leading-normal">
+                Setting your own key saves it privately inside your browser&#39;s LocalStorage. This keeps your usage completely independent, allowing the host owner to keep the website live without paying for massive API bills!
+              </p>
+            </div>
+          )}
           
           {/* Main Option Tabs */}
           <div className="grid grid-cols-4 gap-1 p-1 bg-slate-950 rounded-lg border border-slate-850 text-center">

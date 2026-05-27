@@ -18,24 +18,20 @@ const PORT = 3000;
 // Mount json middleware
 app.use(express.json());
 
-// Initialize Gemini Client Lazily/Safely
-let aiClient: GoogleGenAI | null = null;
-function getGeminiClient(): GoogleGenAI {
-  if (!aiClient) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error('GEMINI_API_KEY environment variable is missing');
-    }
-    aiClient = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
-    });
+// Initialize Gemini Client Safely based on provided or fallback system key
+function getGeminiClient(customApiKey?: string): GoogleGenAI {
+  const apiKey = customApiKey || process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY is missing.');
   }
-  return aiClient;
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      },
+    },
+  });
 }
 
 // Global server check
@@ -46,24 +42,24 @@ app.get('/api/health', (req, res) => {
 // AI Optimization Route
 app.post('/api/ai/optimize', async (req, res) => {
   const { action, text, genre, tone, targetAudience, extraPrompt } = req.body;
+  const clientKey = req.headers['x-gemini-api-key'] as string | undefined;
 
   if (!action) {
     return res.status(400).json({ error: 'Action parameter is required' });
   }
 
-  // Gracefully handle missing GEMINI_API_KEY so application doesn't hard crash
-  try {
-    getGeminiClient();
-  } catch (err: any) {
+  // Check if we have any valid key
+  const finalKey = clientKey || process.env.GEMINI_API_KEY;
+  if (!finalKey) {
     return res.json({
       success: false,
-      error: 'GEMINI_API_KEY is missing. Please add your GEMINI_API_KEY in the Settings > Secrets panel (the gear icon on the left).',
+      error: 'No Gemini API Key supplied. You can paste your own API key in the AI Assistant settings, or ask the developer to configure GEMINI_API_KEY.',
       setupNeeded: true
     });
   }
 
   try {
-    const ai = getGeminiClient();
+    const ai = getGeminiClient(clientKey);
     let prompt = '';
 
     if (action === 'blurb') {
