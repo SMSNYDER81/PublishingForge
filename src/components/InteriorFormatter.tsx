@@ -76,6 +76,62 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
   // Selected page index inside the visual book preview
   const [previewPageIndex, setPreviewPageIndex] = useState<number>(0);
 
+  // State for block being edited inline like a Word document
+  const [editingBlock, setEditingBlock] = useState<{
+    chapId: string;
+    pIdx?: number;
+    isTitle: boolean;
+    initialValue: string;
+    currentValue: string;
+  } | null>(null);
+
+  const startEditing = (chapId: string, pIdx: number | undefined, isTitle: boolean, text: string) => {
+    let targetText = text;
+    if (isTitle) {
+      const chap = chapters.find(c => c.id === chapId);
+      if (chap) targetText = chap.title;
+    } else if (pIdx !== undefined) {
+      const chap = chapters.find(c => c.id === chapId);
+      if (chap && chap.paragraphs[pIdx] !== undefined) {
+        targetText = chap.paragraphs[pIdx];
+      }
+    }
+    
+    setEditingBlock({
+      chapId,
+      pIdx,
+      isTitle,
+      initialValue: targetText,
+      currentValue: targetText
+    });
+  };
+
+  const saveEditing = () => {
+    if (!editingBlock) return;
+    
+    const { chapId, pIdx, isTitle, currentValue } = editingBlock;
+    
+    if (isTitle) {
+      setChapters(prev => prev.map(chap => {
+        if (chap.id !== chapId) return chap;
+        return { ...chap, title: currentValue };
+      }));
+    } else if (pIdx !== undefined) {
+      setChapters(prev => prev.map(chap => {
+        if (chap.id !== chapId) return chap;
+        const updatedParas = [...chap.paragraphs];
+        updatedParas[pIdx] = currentValue;
+        return { ...chap, paragraphs: updatedParas };
+      }));
+    }
+    
+    setEditingBlock(null);
+  };
+
+  const cancelEditing = () => {
+    setEditingBlock(null);
+  };
+
   // Load sample content on boot
   useEffect(() => {
     loadSampleContent();
@@ -705,124 +761,211 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
             </div>
 
             {/* Simulated interactive book card */}
-            <div className="w-full flex justify-center py-4 select-none">
+            <div className="w-full flex justify-center py-4 select-none relative">
               {activePage ? (
-                <div 
-                  id="simulated-book-page-card"
-                  className="bg-white rounded p-12 shadow-md relative border border-gray-200 overflow-hidden text-left"
-                  style={{
-                    width: '320px',
-                    height: '460px',
-                    fontFamily: settings.bodyFont === 'Times New Roman' ? 'serif' : settings.bodyFont,
-                    // Simulate mirror margin visual offsets dynamically
-                    paddingLeft: activePage.pageNumber % 2 !== 0 
-                      ? `${Math.max(20, settings.insideMargin * 40)}px` 
-                      : `${Math.max(20, settings.outsideMargin * 40)}px`,
-                    paddingRight: activePage.pageNumber % 2 !== 0 
-                      ? `${Math.max(20, settings.outsideMargin * 40)}px` 
-                      : `${Math.max(20, settings.insideMargin * 40)}px`,
-                    paddingTop: `${Math.max(25, settings.topMargin * 40)}px`,
-                    paddingBottom: `${Math.max(25, settings.bottomMargin * 40)}px`,
-                  }}
-                >
-                  {/* Mirror Inside Binder Highlight Gutter Line visually */}
+                <>
                   <div 
-                    className="absolute top-0 bottom-0 w-1 bg-yellow-600/15 pointer-events-none"
+                    id="simulated-book-page-card"
+                    className="bg-white rounded p-12 shadow-md relative border border-gray-200 overflow-hidden text-left"
                     style={{
-                      left: activePage.pageNumber % 2 !== 0 ? '0px' : 'auto',
-                      right: activePage.pageNumber % 2 === 0 ? '0px' : 'auto',
+                      width: '320px',
+                      height: '460px',
+                      fontFamily: settings.bodyFont === 'Times New Roman' ? 'serif' : settings.bodyFont,
+                      // Simulate mirror margin visual offsets dynamically
+                      paddingLeft: activePage.pageNumber % 2 !== 0 
+                        ? `${Math.max(20, settings.insideMargin * 40)}px` 
+                        : `${Math.max(20, settings.outsideMargin * 40)}px`,
+                      paddingRight: activePage.pageNumber % 2 !== 0 
+                        ? `${Math.max(20, settings.outsideMargin * 40)}px` 
+                        : `${Math.max(20, settings.insideMargin * 40)}px`,
+                      paddingTop: `${Math.max(25, settings.topMargin * 40)}px`,
+                      paddingBottom: `${Math.max(25, settings.bottomMargin * 40)}px`,
                     }}
-                  />
+                  >
+                    {/* Mirror Inside Binder Highlight Gutter Line visually */}
+                    <div 
+                      className="absolute top-0 bottom-0 w-1 bg-yellow-600/15 pointer-events-none"
+                      style={{
+                        left: activePage.pageNumber % 2 !== 0 ? '0px' : 'auto',
+                        right: activePage.pageNumber % 2 === 0 ? '0px' : 'auto',
+                      }}
+                    />
 
-                  {/* Header page title */}
-                  {settings.showRunningHeaders && activePage.pageNumber > 2 && (
-                    <div className="text-[9px] uppercase border-b border-gray-100 pb-1 text-center font-bold tracking-wider text-gray-400 absolute top-6 left-0 right-0 px-8">
-                      {activePage.pageNumber % 2 !== 0 
-                        ? (settings.headerOddText || 'BY AUTHOR') 
-                        : (settings.headerEvenText || 'BOOK TITLE')
-                      }
-                    </div>
-                  )}
-
-                  {/* Lines mapping visually */}
-                  <div className="h-full flex flex-col justify-start overflow-hidden mt-2 text-xs leading-normal">
-                    {activePage.lines.map((line, lIdx) => {
-                      if (line.isHeading) {
-                        let alignmentClass = 'text-center';
-                        let borderClass = 'border-b border-gray-100 pb-1 mb-3 text-[11px] mt-2 font-black text-gray-900 leading-normal';
-                        if (settings.chapterTitleAlign === 'left') {
-                          alignmentClass = 'text-left';
-                        } else if (settings.chapterTitleAlign === 'fancy-frame') {
-                          alignmentClass = 'text-center border-t border-b border-indigo-150 py-1 my-2.5 tracking-wider text-indigo-600 font-serif uppercase';
-                          borderClass = 'text-[10px] font-black';
+                    {/* Header page title */}
+                    {settings.showRunningHeaders && activePage.pageNumber > 2 && (
+                      <div className="text-[9px] uppercase border-b border-gray-100 pb-1 text-center font-bold tracking-wider text-gray-400 absolute top-6 left-0 right-0 px-8">
+                        {activePage.pageNumber % 2 !== 0 
+                          ? (settings.headerOddText || 'BY AUTHOR') 
+                          : (settings.headerEvenText || 'BOOK TITLE')
                         }
-                        return (
-                          <div 
-                            key={`preview-line-${lIdx}`} 
-                            className={`${alignmentClass} ${borderClass}`}
-                          >
-                            {line.text}
-                          </div>
-                        );
-                      } else if (line.isOrnament) {
-                        let ornamentStr = '✦ ✦ ✦';
-                        if (settings.chapterOrnament === 'floral-leaf') ornamentStr = '❦ ❦ ❦';
-                        else if (settings.chapterOrnament === 'divider-bar') ornamentStr = '═══ ✥ ═══';
-                        else if (settings.chapterOrnament === 'none') ornamentStr = '';
-                        
-                        if (!ornamentStr) return null;
-                        return (
-                          <div key={`preview-line-${lIdx}`} className="text-center text-amber-600 my-1 font-mono text-[10px] tracking-widest">
-                            {ornamentStr}
-                          </div>
-                        );
-                      } else {
-                        const hasDropCap = !!line.dropCapChar;
-                        const dropCapLines = line.dropCapLinesCount || 3;
-                        const accentColor = line.dropCapColor || '#4f46e5';
+                      </div>
+                    )}
 
-                        if (hasDropCap) {
+                    {/* Lines mapping visually */}
+                    <div className="h-full flex flex-col justify-start overflow-hidden mt-2 text-xs leading-normal">
+                      {activePage.lines.map((line, lIdx) => {
+                        const isEditable = !!line.chapId;
+                        const editStyleClass = isEditable 
+                          ? 'cursor-pointer hover:bg-emerald-50 hover:outline hover:outline-dashed hover:outline-1 hover:outline-emerald-400 rounded px-1 transition-all'
+                          : '';
+                        const editTooltip = isEditable 
+                          ? (line.isTitle ? "Double-click or click to edit chapter title" : "Double-click or click to edit paragraph block")
+                          : undefined;
+
+                        const handleLineClick = isEditable ? () => {
+                          startEditing(line.chapId!, line.pIdx, !!line.isTitle, line.text);
+                        } : undefined;
+
+                        if (line.isHeading) {
+                          let alignmentClass = 'text-center';
+                          let borderClass = 'border-b border-gray-100 pb-1 mb-3 text-[11px] mt-2 font-black text-gray-900 leading-normal';
+                          if (settings.chapterTitleAlign === 'left') {
+                            alignmentClass = 'text-left';
+                          } else if (settings.chapterTitleAlign === 'fancy-frame') {
+                            alignmentClass = 'text-center border-t border-b border-indigo-150 py-1 my-2.5 tracking-wider text-indigo-600 font-serif uppercase';
+                            borderClass = 'text-[10px] font-black';
+                          }
                           return (
-                            <div key={`preview-line-${lIdx}`} className="relative mb-0.5 text-justify text-gray-700 text-[10px] leading-relaxed select-none">
-                              {/* Large visible floating drop cap letter */}
-                              <span 
-                                className="float-left font-serif font-black mr-1.5 leading-none"
-                                style={{
-                                  fontSize: dropCapLines === 2 ? '24px' : dropCapLines === 4 ? '44px' : '33px',
-                                  color: accentColor,
-                                  marginTop: '1px',
-                                  lineHeight: '0.85em',
-                                }}
-                              >
-                                {line.dropCapChar}
-                              </span>
-                              <span>{line.text}</span>
+                            <div 
+                              key={`preview-line-${lIdx}`} 
+                              className={`${alignmentClass} ${borderClass} ${editStyleClass}`}
+                              onClick={handleLineClick}
+                              title={editTooltip}
+                            >
+                              {line.text}
                             </div>
                           );
+                        } else if (line.isOrnament) {
+                          let ornamentStr = '✦ ✦ ✦';
+                          if (settings.chapterOrnament === 'floral-leaf') ornamentStr = '❦ ❦ ❦';
+                          else if (settings.chapterOrnament === 'divider-bar') ornamentStr = '═══ ✥ ═══';
+                          else if (settings.chapterOrnament === 'none') ornamentStr = '';
+                          
+                          if (!ornamentStr) return null;
+                          return (
+                            <div key={`preview-line-${lIdx}`} className="text-center text-amber-600 my-1 font-mono text-[10px] tracking-widest">
+                              {ornamentStr}
+                            </div>
+                          );
+                        } else {
+                          const hasDropCap = !!line.dropCapChar;
+                          const dropCapLines = line.dropCapLinesCount || 3;
+                          const accentColor = line.dropCapColor || '#4f46e5';
+
+                          if (hasDropCap) {
+                            return (
+                              <div 
+                                key={`preview-line-${lIdx}`} 
+                                className={`relative mb-0.5 text-justify text-gray-700 text-[10px] leading-relaxed select-none ${editStyleClass}`}
+                                onClick={handleLineClick}
+                                title={editTooltip}
+                              >
+                                {/* Large visible floating drop cap letter */}
+                                <span 
+                                  className="float-left font-serif font-black mr-1.5 leading-none"
+                                  style={{
+                                    fontSize: dropCapLines === 2 ? '24px' : dropCapLines === 4 ? '44px' : '33px',
+                                    color: accentColor,
+                                    marginTop: '1px',
+                                    lineHeight: '0.85em',
+                                  }}
+                                >
+                                  {line.dropCapChar}
+                                </span>
+                                <span>{line.text}</span>
+                              </div>
+                            );
+                          }
+
+                          // Add visual indentation spacing if we are in subsequent indented rows around the dropcap
+                          const isIndentedRow = line.dropCapOffset !== undefined;
+                          return (
+                            <p 
+                              key={`preview-line-${lIdx}`} 
+                              className={`text-gray-700 text-[10px] leading-relaxed mb-0.5 text-justify ${editStyleClass}`}
+                              style={{
+                                paddingLeft: isIndentedRow ? (dropCapLines === 2 ? '18px' : dropCapLines === 4 ? '32px' : '26px') : '0px'
+                              }}
+                              onClick={handleLineClick}
+                              title={editTooltip}
+                            >
+                              {line.text}
+                            </p>
+                          );
                         }
+                      })}
+                    </div>
 
-                        // Add visual indentation spacing if we are in subsequent indented rows around the dropcap
-                        const isIndentedRow = line.dropCapOffset !== undefined;
-                        return (
-                          <p 
-                            key={`preview-line-${lIdx}`} 
-                            className="text-gray-700 text-[10px] leading-relaxed mb-0.5 text-justify"
-                            style={{
-                              paddingLeft: isIndentedRow ? (dropCapLines === 2 ? '18px' : dropCapLines === 4 ? '32px' : '26px') : '0px'
-                            }}
-                          >
-                            {line.text}
-                          </p>
-                        );
-                      }
-                    })}
+                    {/* Footer Page Number centered */}
+                    <div className="absolute bottom-5 left-0 right-0 text-center text-[10px] font-bold text-gray-400">
+                      {activePage.pageNumber}
+                    </div>
                   </div>
 
-                  {/* Footer Page Number centered */}
-                  <div className="absolute bottom-5 left-0 right-0 text-center text-[10px] font-bold text-gray-400">
-                    {activePage.pageNumber}
-                  </div>
-                </div>
+                  {/* Word document style interactive overlay editor */}
+                  {editingBlock && (
+                    <div 
+                      className="absolute bg-slate-950/95 rounded-md shadow-2xl flex flex-col justify-between p-5 z-25 text-white font-sans border border-slate-700 animate-fade-in"
+                      style={{
+                        width: '320px',
+                        height: '460px',
+                      }}
+                    >
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between border-b border-white/10 pb-1.5">
+                          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1">
+                            <Sparkles className="w-3.5 h-3.5" />
+                            {editingBlock.isTitle ? "Edit Chapter Title" : "Inline Text Block Editor"}
+                          </span>
+                          <span className="text-[8px] font-mono text-gray-400">
+                            Ctrl+Enter to Save
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-gray-300 leading-normal">
+                          {editingBlock.isTitle 
+                            ? "Editing chapter title. This instantly triggers reflow." 
+                            : "Editing paragraph directly. Layout flows to subsequent pages."
+                          }
+                        </p>
+                        <textarea
+                          autoFocus
+                          value={editingBlock.currentValue}
+                          onChange={(e) => setEditingBlock(prev => prev ? { ...prev, currentValue: e.target.value } : null)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                              e.preventDefault();
+                              saveEditing();
+                            } else if (e.key === 'Escape') {
+                              cancelEditing();
+                            }
+                          }}
+                          className="w-full h-[240px] bg-slate-900 text-white rounded p-3 text-[11px] leading-relaxed border border-white/10 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-sans resize-none"
+                          placeholder="Type content here..."
+                          onFocus={(e) => {
+                            // Put caret at the end of the text
+                            const val = e.target.value;
+                            e.target.value = '';
+                            e.target.value = val;
+                          }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between border-t border-white/10 pt-2.5 mt-1.5">
+                        <button
+                          onClick={cancelEditing}
+                          className="hover:bg-white/5 text-gray-400 hover:text-white font-mono text-[9.5px] font-bold py-1.5 px-2.5 rounded cursor-pointer transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={saveEditing}
+                          className="bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-[9.5px] font-bold py-1.5 px-3.5 rounded cursor-pointer transition-colors shadow-md shadow-emerald-950/20"
+                        >
+                          Save Changes
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="text-gray-400 font-mono text-xs">No pages styled yet. Please upload content.</div>
               )}

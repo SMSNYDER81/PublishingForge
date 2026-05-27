@@ -39,6 +39,11 @@ export interface LayoutLine {
   dropCapLinesCount?: number;
   dropCapColor?: string;
   dropCapOffset?: number;
+  
+  // High-fidelity source tracking for interactive document editing
+  chapId?: string;
+  pIdx?: number;
+  isTitle?: boolean;
 }
 
 export interface LayoutPage {
@@ -194,7 +199,9 @@ export function typesetManuscript(
       text: headingText, 
       isHeading: true,
       align: alignStyle === 'fancy-frame' ? 'center' : alignStyle,
-      isFancyFrame: alignStyle === 'fancy-frame'
+      isFancyFrame: alignStyle === 'fancy-frame',
+      chapId: chap.id,
+      isTitle: true
     });
 
     if (settings.showOrnament && settings.chapterOrnament !== 'none') {
@@ -205,6 +212,29 @@ export function typesetManuscript(
         ornamentText = '═════════ ❃ ═════════';
       }
       currentLines.push({ text: ornamentText, isHeading: false, isOrnament: true });
+    }
+
+    // Find the actual first body paragraph to apply the drop cap (heuristic)
+    let dropCapPIdx = -1;
+    if (settings.showDropCap) {
+      for (let i = 0; i < chap.paragraphs.length; i++) {
+        const text = chap.paragraphs[i].trim();
+        if (!text) continue;
+        // Search for a paragraph that has at least 8 words and 40 characters (excluding brief subtitles / metadata)
+        if (text.split(/\s+/).length >= 8 && text.length >= 40) {
+          dropCapPIdx = i;
+          break;
+        }
+      }
+      // Fallback: if no paragraph meets the body criteria, use the first non-empty paragraph
+      if (dropCapPIdx === -1) {
+        for (let i = 0; i < chap.paragraphs.length; i++) {
+          if (chap.paragraphs[i].trim()) {
+            dropCapPIdx = i;
+            break;
+          }
+        }
+      }
     }
 
     // Process paragraphs
@@ -220,7 +250,7 @@ export function typesetManuscript(
       const contentWidthPts = widthPts - activeLeftMargin - activeRightMargin;
 
       // Drop Cap typesetting
-      if (pIdx === 0 && settings.showDropCap && pText.trim().length > 0) {
+      if (pIdx === dropCapPIdx && settings.showDropCap && pText.trim().length > 0) {
         const rawTrimmed = pText.trim();
         const dropCapChar = rawTrimmed.charAt(0);
         const pRestText = rawTrimmed.slice(1);
@@ -259,7 +289,9 @@ export function typesetManuscript(
             dropCapChar: li === 0 ? dropCapChar : undefined,
             dropCapOffset: isIndentedRow ? dropCapOffsetVal : undefined,
             dropCapLinesCount: dropCapLinesCount,
-            dropCapColor: settings.dropCapColor || '#4f46e5'
+            dropCapColor: settings.dropCapColor || '#4f46e5',
+            chapId: chap.id,
+            pIdx: pIdx
           });
         }
       } else {
@@ -270,13 +302,23 @@ export function typesetManuscript(
         const wrappedLines = wrapParagraph_internal(textToWrap, contentWidthPts, false);
 
         for (const line of wrappedLines) {
-          currentLines.push({ text: line, isHeading: false });
+          currentLines.push({ 
+            text: line, 
+            isHeading: false,
+            chapId: chap.id,
+            pIdx: pIdx
+          });
         }
       }
 
       // Add a spacer line if block spacing is selected
       if (settings.paragraphStyle === 'block') {
-        currentLines.push({ text: '', isHeading: false });
+        currentLines.push({ 
+          text: '', 
+          isHeading: false,
+          chapId: chap.id,
+          pIdx: pIdx
+        });
       }
     }
 
