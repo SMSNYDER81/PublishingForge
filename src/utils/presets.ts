@@ -94,6 +94,10 @@ export const FONTS_LIST = [
   { id: 'lora', name: 'Lora', fontStyle: 'serif', url: 'https://cdn.jsdelivr.net/npm/@openfonts/lora_all@1.44.2/files/lora-all-400.ttf' },
   { id: 'libre-baskerville', name: 'Libre Baskerville', fontStyle: 'serif', url: 'https://cdn.jsdelivr.net/npm/@openfonts/libre-baskerville_all@1.44.2/files/libre-baskerville-all-400.ttf' },
   { id: 'merriweather', name: 'Merriweather', fontStyle: 'serif', url: 'https://cdn.jsdelivr.net/npm/@openfonts/merriweather_all@1.44.2/files/merriweather-all-400.ttf' },
+  { id: 'cormorant-garamond', name: 'Cormorant Garamond', fontStyle: 'serif', url: 'https://cdn.jsdelivr.net/npm/@openfonts/cormorant-garamond_all@1.44.2/files/cormorant-garamond-all-400.ttf' },
+  { id: 'playfair-display', name: 'Playfair Display', fontStyle: 'serif', url: 'https://cdn.jsdelivr.net/npm/@openfonts/playfair-display_all@1.44.2/files/playfair-display-all-400.ttf' },
+  { id: 'cardo', name: 'Cardo', fontStyle: 'serif', url: 'https://cdn.jsdelivr.net/npm/@openfonts/cardo_all@1.44.2/files/cardo-all-400.ttf' },
+  { id: 'cinzel', name: 'Cinzel', fontStyle: 'serif', url: 'https://cdn.jsdelivr.net/npm/@openfonts/cinzel_all@1.44.2/files/cinzel-all-400.ttf' },
 ];
 
 export const DEFAULT_BOOK_CONTENT = `Chapter 1: The Sparks of Creation

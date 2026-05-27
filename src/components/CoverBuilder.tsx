@@ -59,16 +59,41 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
   const [fullWrapWidthPx, setFullWrapWidthPx] = useState<number>(0);
   const [fullWrapHeightPx, setFullWrapHeightPx] = useState<number>(0);
 
-  // Calculate specifications
+  // Calculate specifications based on physical binding style rules
   const trimPreset = TRIM_SIZES.find(t => t.id === settings.trimId) || TRIM_SIZES[3];
   const trimWidth = settings.trimId === 'custom' ? settings.customWidth : trimPreset.width;
   const trimHeight = settings.trimId === 'custom' ? settings.customHeight : trimPreset.height;
 
   const calculatedSpine = calculateSpineWidth(settings.platform, settings.paperColor, settings.pageCount);
-  const bleed = 0.125; // standard bleed
+  
+  // Custom layout geometry specs
+  const flapWidth = settings.flapWidth || 3.25;
+  let computedBleed = 0.125;
+  let totalFlatWidth = 0;
+  let totalFlatHeight = 0;
 
-  const totalFlatWidth = (trimWidth * 2) + calculatedSpine + (bleed * 2);
-  const totalFlatHeight = trimHeight + (bleed * 2);
+  let backCoverWidthPts = 0;
+  let frontCoverWidthPts = 0;
+
+  if (settings.binding === 'hardcover-case') {
+    computedBleed = 0.625; // standard turn-in
+    totalFlatHeight = trimHeight + 0.25 + (computedBleed * 2);
+    totalFlatWidth = (trimWidth * 2) + calculatedSpine + 1.75;
+    backCoverWidthPts = trimWidth - 0.125 + computedBleed;
+    frontCoverWidthPts = trimWidth - 0.125 + computedBleed;
+  } else if (settings.binding === 'hardcover-jacket') {
+    computedBleed = 0.125;
+    totalFlatHeight = trimHeight + 0.25 + (computedBleed * 2);
+    totalFlatWidth = (flapWidth * 2) + ((trimWidth + 0.0625) * 2) + calculatedSpine + (computedBleed * 2);
+    backCoverWidthPts = trimWidth + 0.0625;
+    frontCoverWidthPts = trimWidth + 0.0625;
+  } else {
+    computedBleed = 0.125;
+    totalFlatHeight = trimHeight + (computedBleed * 2);
+    totalFlatWidth = (trimWidth * 2) + calculatedSpine + (computedBleed * 2);
+    backCoverWidthPts = trimWidth + computedBleed;
+    frontCoverWidthPts = trimWidth + computedBleed;
+  }
 
   // Pixel dimensions recommendations at 300 DPI
   const targetWidthPx = Math.round(totalFlatWidth * 300);
@@ -143,35 +168,39 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
 
     const scale = drawWidth / totalFlatWidth;
 
-    // Background color setups
-    ctx.fillStyle = settings.backBgColor;
-    ctx.fillRect(0, 0, (trimWidth + bleed) * scale, drawHeight);
-
-    // Spine background coloring
-    const spineStartX = (trimWidth + bleed) * scale;
+    // Helper positions in coordinate pixels
+    const flapWidthScale = (settings.binding === 'hardcover-jacket' ? (settings.flapWidth || 3.25) + 0.125 : 0) * scale;
+    const backCoverWidthScale = backCoverWidthPts * scale;
     const spineWidthScale = calculatedSpine * scale;
+    const frontCoverWidthScale = frontCoverWidthPts * scale;
+
+    const spineStartX = settings.binding === 'hardcover-jacket' 
+      ? flapWidthScale + backCoverWidthScale 
+      : (settings.binding === 'hardcover-case' ? backCoverWidthScale + 0.375 * scale : backCoverWidthScale);
+    const frontStartX = settings.binding === 'hardcover-jacket'
+      ? spineStartX + spineWidthScale
+      : (settings.binding === 'hardcover-case' ? spineStartX + spineWidthScale + 0.375 * scale : spineStartX + spineWidthScale);
+
+    ctx.fillStyle = settings.backBgColor;
+    ctx.fillRect(0, 0, drawWidth, drawHeight);
+
     ctx.fillStyle = settings.spineBgColor;
     ctx.fillRect(spineStartX, 0, spineWidthScale, drawHeight);
-
-    // Front cover background coloring
-    const frontStartX = spineStartX + spineWidthScale;
-    ctx.fillStyle = settings.backBgColor;
-    ctx.fillRect(frontStartX, 0, (trimWidth + bleed) * scale, drawHeight);
 
     // Draw uploaded front image on front cover if uploaded
     if (frontImgUrl) {
       const frontImg = new Image();
       frontImg.src = frontImgUrl;
       frontImg.onload = () => {
-        ctx.drawImage(frontImg, frontStartX, 0, (trimWidth + bleed) * scale, drawHeight);
+        ctx.drawImage(frontImg, frontStartX, 0, frontCoverWidthScale, drawHeight);
         drawGuidesAndTexts();
       };
     } else {
       // Draw placeholder front text
       ctx.fillStyle = '#64748b';
-      ctx.font = 'italic 16px serif';
+      ctx.font = 'italic 15px serif';
       ctx.textAlign = 'center';
-      ctx.fillText('[ Front Cover Art Placeholder ]', frontStartX + ((trimWidth + bleed) * scale) / 2, drawHeight / 2);
+      ctx.fillText('[ Front Cover Art Placeholder ]', frontStartX + (frontCoverWidthScale / 2), drawHeight / 2);
     }
 
     // Draw back image if uploaded
@@ -179,7 +208,8 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
       const backImg = new Image();
       backImg.src = backImgUrl;
       backImg.onload = () => {
-        ctx.drawImage(backImg, 0, 0, (trimWidth + bleed) * scale, drawHeight);
+        const backDrawWidth = settings.binding === 'hardcover-jacket' ? backCoverWidthScale + flapWidthScale : backCoverWidthScale;
+        ctx.drawImage(backImg, 0, 0, backDrawWidth, drawHeight);
         drawGuidesAndTexts();
       };
     }
@@ -197,8 +227,8 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
         const textWords = settings.backDescription.split(' ');
         let currentLine = '';
         let yOffset = 45;
-        const leftBound = 24;
-        const wrapWidth = (trimWidth + bleed) * scale - 48;
+        const leftBound = (settings.binding === 'hardcover-jacket' ? flapWidthScale : 0) + 24;
+        const wrapWidth = backCoverWidthScale - 48;
 
         for (const word of textWords) {
           const testLine = currentLine ? currentLine + ' ' + word : word;
@@ -217,15 +247,16 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
 
       // Barcode space
       if (settings.showBarcodePlaceholder && !backImgUrl) {
+        const barcodeX = (settings.binding === 'hardcover-jacket' ? flapWidthScale : 0) + 24;
         ctx.fillStyle = '#ffffff';
         ctx.strokeStyle = '#cbd5e1';
-        ctx.fillRect(24, drawHeight - 65, 80, 45);
-        ctx.strokeRect(24, drawHeight - 65, 80, 45);
+        ctx.fillRect(barcodeX, drawHeight - 65, 80, 45);
+        ctx.strokeRect(barcodeX, drawHeight - 65, 80, 45);
         ctx.fillStyle = '#64748b';
         ctx.font = '7px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('ISBN BARCODE', 64, drawHeight - 45);
-        ctx.fillText('PLACEHOLDER', 64, drawHeight - 35);
+        ctx.fillText('ISBN BARCODE', barcodeX + 40, drawHeight - 45);
+        ctx.fillText('PLACEHOLDER', barcodeX + 40, drawHeight - 35);
       }
 
       // Render spine text rotated
@@ -246,7 +277,7 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
 
       // Bleed & Safety guides
       if (showGuides) {
-        const bleedPx = bleed * scale;
+        const bleedPx = computedBleed * scale;
 
         // Draw Outer Bleed lines
         ctx.strokeStyle = 'rgba(239, 68, 68, 0.45)'; // Rose color
@@ -260,11 +291,31 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
         ctx.strokeStyle = 'rgba(59, 130, 246, 0.4)'; // Blue color
         ctx.strokeRect(spineStartX, 0, spineWidthScale, drawHeight);
 
+        // If jacket dust cover, draw the flap folds in dotted blue/green!
+        if (settings.binding === 'hardcover-jacket') {
+          ctx.strokeStyle = 'rgba(16, 185, 129, 0.6)'; // Green color
+          ctx.beginPath();
+          // Draw Left fold line
+          ctx.moveTo(flapWidthScale, 0);
+          ctx.lineTo(flapWidthScale, drawHeight);
+          // Draw Right fold line
+          ctx.moveTo(frontStartX + frontCoverWidthScale, 0);
+          ctx.lineTo(frontStartX + frontCoverWidthScale, drawHeight);
+          ctx.stroke();
+
+          // Overlay flap labeling
+          ctx.fillStyle = 'rgba(16, 185, 129, 0.85)';
+          ctx.font = '8px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText('Left Flap', flapWidthScale / 2, 20);
+          ctx.fillText('Right Flap', (frontStartX + frontCoverWidthScale + drawWidth) / 2, 20);
+        }
+
         // Overlay text description
         ctx.fillStyle = 'rgba(220, 38, 38, 0.7)';
         ctx.font = '8px monospace';
         ctx.textAlign = 'left';
-        ctx.fillText('← Bleed Margin Overlay (0.125")', bleedPx + 6, bleedPx + 14);
+        ctx.fillText(`← Outer Trim Bleed (${computedBleed.toFixed(3)}")`, bleedPx + 6, bleedPx + 14);
 
         ctx.fillStyle = 'rgba(37, 99, 235, 0.7)';
         ctx.fillText('Spine Safety Zones', spineStartX + spineWidthScale + 6, drawHeight - 14);
@@ -347,11 +398,46 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
                   className="w-full bg-gray-50 border border-gray-200 rounded p-2 text-gray-700"
                 >
                   <option value="kdp">Amazon KDP </option>
-                  <option value="ingram">IngramSpark</option>
+                  <option value="ingram">IngramSpark (All Cover Models)</option>
                   <option value="lulu">Lulu Publisher</option>
                   <option value="d2d">Draft2Digital Print</option>
                 </select>
               </div>
+
+              {/* Physical Binding Cover Style Selector */}
+              <div>
+                <label className="block text-gray-400 font-bold mb-1.5">BINDING &amp; COVER STYLE</label>
+                <select 
+                  value={settings.binding} 
+                  onChange={(e) => setSettings(p => ({ ...p, binding: e.target.value as any }))}
+                  className="w-full bg-gray-50 border border-gray-200 rounded p-2 text-gray-700 font-bold"
+                >
+                  <option value="paperback">Standard Paperback (Perfect Bound)</option>
+                  <option value="hardcover-case">Hardcover Case Laminate (Printed Boards)</option>
+                  <option value="hardcover-jacket">Hardcover Jacketed (with Dust Jacket Flaps)</option>
+                </select>
+              </div>
+
+              {settings.binding === 'hardcover-jacket' && (
+                <div id="jacket-flap-inputs" className="p-3 bg-indigo-50/50 border border-indigo-100 rounded space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-indigo-950 font-bold">UST JACKET FLAP WIDTH (IN)</label>
+                    <span className="text-[10px] text-indigo-600 font-mono">Allowed: 2.5" – 5.0"</span>
+                  </div>
+                  <input 
+                    type="number" 
+                    step="0.25"
+                    min="2.5"
+                    max="5.0"
+                    value={settings.flapWidth || 3.25} 
+                    onChange={(e) => setSettings(p => ({ ...p, flapWidth: parseFloat(e.target.value) || 3.25 }))}
+                    className="w-full bg-white border border-indigo-200 rounded p-2 text-indigo-900 font-bold font-mono"
+                  />
+                  <p className="text-[9px] text-indigo-600 font-sans leading-normal">
+                    IngramSpark and major printers recommend 3.25" for books under 8.5" tall, and 3.50" to 4" for taller volumes.
+                  </p>
+                </div>
+              )}
 
               {/* Spine multipliers details */}
               <div className="grid grid-cols-2 gap-4">

@@ -32,7 +32,7 @@ export interface TrimPreset {
   commonUse: string;
 }
 
-export type BindingType = 'paperback' | 'hardcover';
+export type BindingType = 'paperback' | 'hardcover' | 'hardcover-case' | 'hardcover-jacket';
 export type PaperColor = 'white' | 'cream' | 'color';
 
 export interface CoverSettings {
@@ -43,6 +43,7 @@ export interface CoverSettings {
   customHeight: number;
   paperColor: PaperColor;
   pageCount: number;
+  flapWidth?: number; // dust jacket flap width in inches
   
   // Design Settings
   mode: 'front' | 'full'; 
@@ -84,6 +85,10 @@ export interface InteriorSettings {
   chapterStartNewPage: boolean;
   chapterNumberStyle: 'arabic' | 'roman' | 'spelled' | 'none';
   showDropCap: boolean;
+  dropCapLines?: number; // 2 or 3 lines high
+  dropCapColor?: string; // hex colour for drop caps
+  chapterOrnament?: 'triple-star' | 'floral-leaf' | 'divider-bar' | 'none';
+  chapterTitleAlign?: 'center' | 'left' | 'fancy-frame';
   showOrnament: boolean;
   
   // Front Matter

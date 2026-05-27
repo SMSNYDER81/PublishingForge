@@ -43,6 +43,10 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
     chapterStartNewPage: true,
     chapterNumberStyle: 'arabic',
     showDropCap: true,
+    dropCapLines: 3,
+    dropCapColor: '#4f46e5',
+    chapterOrnament: 'triple-star',
+    chapterTitleAlign: 'center',
     showOrnament: true,
     
     // Front matter text elements
@@ -398,15 +402,21 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
                 <span className="block text-gray-400 font-bold mb-2">DESIGN TYPOGRAPHY</span>
                 <div className="space-y-3 p-3 bg-gray-50 rounded border border-gray-100">
                   <div>
-                    <label className="block text-gray-500 text-[10px] mb-1">Body Font Family</label>
+                    <label className="block text-gray-500 text-[10px] mb-1 font-bold">Body Font Family</label>
                     <select 
                       value={settings.bodyFont} 
                       onChange={(e) => setSettings(p => ({ ...p, bodyFont: e.target.value }))}
-                      className="w-full bg-white border border-gray-200 p-1 rounded leading-tight"
+                      className="w-full bg-white border border-gray-200 p-1 rounded leading-tight text-gray-800 font-sans"
                     >
                       <option value="Times New Roman">Georgia serif (Times Roman Fallback)</option>
-                      <option value="Libre Baskerville">Garamond style (Libre Baskerville)</option>
-                      <option value="Lora">Modern Editorial (Lora serif)</option>
+                      <option value="EB Garamond">EB Garamond (Elegant &amp; Traditional)</option>
+                      <option value="Libre Baskerville">Baskerville (Crisp Book Type)</option>
+                      <option value="Lora">Lora (Modern Digital/Print Editorial)</option>
+                      <option value="Crimson Pro">Crimson Pro (Classic Roman Proportions)</option>
+                      <option value="Cormorant Garamond">Cormorant Garamond (Delicate Slender Luxury)</option>
+                      <option value="Playfair Display">Playfair Display (Classy Title Face)</option>
+                      <option value="Cardo">Cardo (Scholar old-style serif)</option>
+                      <option value="Cinzel">Cinzel (Formal Trajan Capital Face)</option>
                     </select>
                   </div>
 
@@ -439,7 +449,7 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
 
                   <div className="grid grid-cols-2 gap-3.5">
                     <div>
-                      <label className="block text-gray-500 text-[10px] mb-1">Paragraph Spacing Style</label>
+                      <label className="block text-gray-500 text-[10px] mb-1 font-bold">Paragraph Spacing Style</label>
                       <select 
                         value={settings.paragraphStyle} 
                         onChange={(e) => setSettings(p => ({ ...p, paragraphStyle: e.target.value as any }))}
@@ -451,7 +461,7 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
                     </div>
 
                     <div>
-                      <label className="block text-gray-500 text-[10px] mb-1">Running Header texts</label>
+                      <label className="block text-gray-500 text-[10px] mb-1 font-bold">Running Header texts</label>
                       <select 
                         value={settings.showRunningHeaders ? 'on' : 'off'} 
                         onChange={(e) => setSettings(p => ({ ...p, showRunningHeaders: e.target.value === 'on' }))}
@@ -462,6 +472,108 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
                       </select>
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* Advanced Fine Book Styles */}
+              <div>
+                <span className="block text-gray-400 font-bold mb-2">ELEGANT CHAPTER LAYOUTS</span>
+                <div className="space-y-3 p-3 bg-slate-50/50 border border-slate-200 rounded text-slate-800">
+                  
+                  {/* Drop caps section */}
+                  <div className="space-y-2 border-b border-gray-100 pb-2.5">
+                    <div className="flex items-center gap-1.5">
+                      <input 
+                        type="checkbox" 
+                        id="drop-cap-checker"
+                        checked={settings.showDropCap} 
+                        onChange={(e) => setSettings(p => ({ ...p, showDropCap: e.target.checked }))}
+                        className="accent-emerald-600 rounded"
+                      />
+                      <label htmlFor="drop-cap-checker" className="text-[11px] font-bold text-gray-700 cursor-pointer">
+                        ENABLE CHAPTER DROP CAPS
+                      </label>
+                    </div>
+
+                    {settings.showDropCap && (
+                      <div className="grid grid-cols-2 gap-2.5 pl-5 pt-1">
+                        <div>
+                          <label className="block text-gray-500 text-[9px] mb-0.5">DROP CAP SCALING</label>
+                          <select 
+                            value={settings.dropCapLines || 3} 
+                            onChange={(e) => setSettings(p => ({ ...p, dropCapLines: parseInt(e.target.value) || 3 }))}
+                            className="w-full bg-white border border-gray-250 p-1 rounded text-[10px]"
+                          >
+                            <option value="2">2 Lines Tall (Compact)</option>
+                            <option value="3">3 Lines Tall (Standard)</option>
+                            <option value="4">4 Lines Tall (Fancy)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-gray-500 text-[9px] mb-0.5">ACCENT COLOR</label>
+                          <div className="flex gap-1.5 items-center">
+                            <input 
+                              type="color" 
+                              value={settings.dropCapColor || '#4f46e5'} 
+                              onChange={(e) => setSettings(p => ({ ...p, dropCapColor: e.target.value }))}
+                              className="w-5 h-5 cursor-pointer rounded shrink-0 border border-gray-200"
+                            />
+                            <input 
+                              type="text" 
+                              value={settings.dropCapColor || '#4f46e5'} 
+                              onChange={(e) => setSettings(p => ({ ...p, dropCapColor: e.target.value }))}
+                              className="w-full text-[9px] bg-white border border-gray-200 p-1 rounded"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Chapter decoration styles */}
+                  <div className="grid grid-cols-2 gap-2 border-b border-gray-100 pb-2.5">
+                    <div>
+                      <label className="block text-gray-500 text-[9px] mb-1 font-bold">TITLE ALIGNMENT</label>
+                      <select 
+                        value={settings.chapterTitleAlign || 'center'} 
+                        onChange={(e) => setSettings(p => ({ ...p, chapterTitleAlign: e.target.value as any }))}
+                        className="w-full bg-white border border-gray-200 p-1 rounded text-[10px]"
+                      >
+                        <option value="center">Center</option>
+                        <option value="left">Left-Aligned</option>
+                        <option value="fancy-frame">Fancy Ornamental Frame</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-gray-500 text-[9px] mb-1 font-bold">CHAPTER ORNAMENT</label>
+                      <select 
+                        value={settings.chapterOrnament || 'triple-star'} 
+                        onChange={(e) => setSettings(p => ({ ...p, chapterOrnament: e.target.value as any }))}
+                        className="w-full bg-white border border-gray-200 p-1 rounded text-[10px]"
+                      >
+                        <option value="none">No Ornament</option>
+                        <option value="triple-star">✦ ✦ ✦ (Classic Star)</option>
+                        <option value="floral-leaf">❦ ❦ (Floral Vine Leaf)</option>
+                        <option value="divider-bar">═══ ✥ ═══ (Filigree Bar)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Show general ornament checkbox */}
+                  <div className="flex items-center gap-1.5 pt-1">
+                    <input 
+                      type="checkbox" 
+                      id="ornament-switch"
+                      checked={settings.showOrnament} 
+                      onChange={(e) => setSettings(p => ({ ...p, showOrnament: e.target.checked }))}
+                      className="accent-emerald-600 rounded"
+                    />
+                    <label htmlFor="ornament-switch" className="text-[11px] font-bold text-gray-700 cursor-pointer">
+                      RENDER DIVIDERS BETWEEN LESSONS
+                    </label>
+                  </div>
+
                 </div>
               </div>
 
@@ -615,25 +727,68 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
                   <div className="h-full flex flex-col justify-start overflow-hidden mt-2 text-xs leading-normal">
                     {activePage.lines.map((line, lIdx) => {
                       if (line.isHeading) {
+                        let alignmentClass = 'text-center';
+                        let borderClass = 'border-b border-gray-100 pb-1 mb-3 text-[11px] mt-2 font-black text-gray-900 leading-normal';
+                        if (settings.chapterTitleAlign === 'left') {
+                          alignmentClass = 'text-left';
+                        } else if (settings.chapterTitleAlign === 'fancy-frame') {
+                          alignmentClass = 'text-center border-t border-b border-indigo-150 py-1 my-2.5 tracking-wider text-indigo-600 font-serif uppercase';
+                          borderClass = 'text-[10px] font-black';
+                        }
                         return (
                           <div 
                             key={`preview-line-${lIdx}`} 
-                            className="font-black text-center text-gray-900 border-b border-gray-100 pb-1 mb-3 text-sm mt-2"
+                            className={`${alignmentClass} ${borderClass}`}
                           >
                             {line.text}
                           </div>
                         );
                       } else if (line.isOrnament) {
+                        let ornamentStr = '✦ ✦ ✦';
+                        if (settings.chapterOrnament === 'floral-leaf') ornamentStr = '❦ ❦ ❦';
+                        else if (settings.chapterOrnament === 'divider-bar') ornamentStr = '═══ ✥ ═══';
+                        else if (settings.chapterOrnament === 'none') ornamentStr = '';
+                        
+                        if (!ornamentStr) return null;
                         return (
-                          <div key={`preview-line-${lIdx}`} className="text-center text-amber-600 my-1 font-sans">
-                            ✦ ✦ ✦
+                          <div key={`preview-line-${lIdx}`} className="text-center text-amber-600 my-1 font-mono text-[10px] tracking-widest">
+                            {ornamentStr}
                           </div>
                         );
                       } else {
+                        const hasDropCap = !!line.dropCapChar;
+                        const dropCapLines = line.dropCapLinesCount || 3;
+                        const accentColor = line.dropCapColor || '#4f46e5';
+
+                        if (hasDropCap) {
+                          return (
+                            <div key={`preview-line-${lIdx}`} className="relative mb-0.5 text-justify text-gray-700 text-[10px] leading-relaxed select-none">
+                              {/* Large visible floating drop cap letter */}
+                              <span 
+                                className="float-left font-serif font-black mr-1.5 leading-none"
+                                style={{
+                                  fontSize: dropCapLines === 2 ? '24px' : dropCapLines === 4 ? '44px' : '33px',
+                                  color: accentColor,
+                                  marginTop: '1px',
+                                  lineHeight: '0.85em',
+                                }}
+                              >
+                                {line.dropCapChar}
+                              </span>
+                              <span>{line.text}</span>
+                            </div>
+                          );
+                        }
+
+                        // Add visual indentation spacing if we are in subsequent indented rows around the dropcap
+                        const isIndentedRow = line.dropCapOffset !== undefined;
                         return (
                           <p 
                             key={`preview-line-${lIdx}`} 
                             className="text-gray-700 text-[10px] leading-relaxed mb-0.5 text-justify"
+                            style={{
+                              paddingLeft: isIndentedRow ? (dropCapLines === 2 ? '18px' : dropCapLines === 4 ? '32px' : '26px') : '0px'
+                            }}
                           >
                             {line.text}
                           </p>

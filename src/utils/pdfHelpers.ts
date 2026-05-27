@@ -10,6 +10,16 @@ import { PLATFORMS, TRIM_SIZES, FONTS_LIST } from './presets';
 // Helper: convert inches to points
 export const inchesToPts = (inches: number) => inches * 72;
 
+// Helper: convert hex string to rgb color vector
+export const hexToColorVec = (hex: string) => {
+  if (!hex || hex.charAt(0) !== '#') return rgb(0, 0, 0);
+  const cleanHex = hex.trim();
+  const r = parseInt(cleanHex.substring(1, 3), 16) / 255;
+  const g = parseInt(cleanHex.substring(3, 5), 16) / 255;
+  const b = parseInt(cleanHex.substring(5, 7), 16) / 255;
+  return rgb(r, g, b);
+};
+
 // Helper: Calculate Spine Width for Covers
 export function calculateSpineWidth(platformId: PlatformId, paperColor: 'white' | 'cream' | 'color', pageCount: number): number {
   const platform = PLATFORMS[platformId];
@@ -23,6 +33,12 @@ export interface LayoutLine {
   text: string;
   isHeading: boolean;
   isOrnament?: boolean;
+  align?: 'left' | 'center' | 'fancy-frame';
+  isFancyFrame?: boolean;
+  dropCapChar?: string;
+  dropCapLinesCount?: number;
+  dropCapColor?: string;
+  dropCapOffset?: number;
 }
 
 export interface LayoutPage {
@@ -171,21 +187,30 @@ export function typesetManuscript(
   for (const chap of chapters) {
     let currentLines: LayoutLine[] = [];
 
-    // H1 Chapter header
-    currentLines.push({ text: chap.title, isHeading: true });
-    if (settings.showOrnament) {
-      currentLines.push({ text: '✦ ✦ ✦', isHeading: false, isOrnament: true });
+    // H1 Chapter header alignment
+    const alignStyle = settings.chapterTitleAlign || 'center';
+    const headingText = alignStyle === 'fancy-frame' ? `[ ${chap.title.toUpperCase()} ]` : chap.title;
+    currentLines.push({ 
+      text: headingText, 
+      isHeading: true,
+      align: alignStyle === 'fancy-frame' ? 'center' : alignStyle,
+      isFancyFrame: alignStyle === 'fancy-frame'
+    });
+
+    if (settings.showOrnament && settings.chapterOrnament !== 'none') {
+      let ornamentText = '✦   ✦   ✦';
+      if (settings.chapterOrnament === 'floral-leaf') {
+        ornamentText = '❦   ❊   ❦';
+      } else if (settings.chapterOrnament === 'divider-bar') {
+        ornamentText = '═════════ ❃ ═════════';
+      }
+      currentLines.push({ text: ornamentText, isHeading: false, isOrnament: true });
     }
 
     // Process paragraphs
     for (let pIdx = 0; pIdx < chap.paragraphs.length; pIdx++) {
       let pText = chap.paragraphs[pIdx];
       if (!pText.trim()) continue;
-
-      // First-paragraph drop-cap convention: no indent for first paragraph.
-      const shouldIndent = settings.paragraphStyle === 'indent' && pIdx > 0;
-      const displayPrefix = shouldIndent ? '      ' : ''; // indent spacer approx
-      const textToWrap = displayPrefix + pText;
 
       const isOdd = pageNumber % 2 !== 0;
       const insideM = inchesToPts(settings.insideMargin);
@@ -194,10 +219,59 @@ export function typesetManuscript(
       const activeRightMargin = isOdd ? outsideM : insideM;
       const contentWidthPts = widthPts - activeLeftMargin - activeRightMargin;
 
-      const wrappedLines = wrapParagraph_internal(textToWrap, contentWidthPts, false);
+      // Drop Cap typesetting
+      if (pIdx === 0 && settings.showDropCap && pText.trim().length > 0) {
+        const rawTrimmed = pText.trim();
+        const dropCapChar = rawTrimmed.charAt(0);
+        const pRestText = rawTrimmed.slice(1);
+        const dropCapLinesCount = settings.dropCapLines || 3;
+        const dropCapOffsetVal = 24 + (settings.bodyFontSize - 11) * 2; // adaptive indented spacing
+        
+        // Wrap drop-cap paragraph with alternating margins
+        const wrappedLines: string[] = [];
+        const fontScale = bodySize * charWidthApprox;
+        const words = pRestText.split(/\s+/);
+        let currentLine = '';
 
-      for (const line of wrappedLines) {
-        currentLines.push({ text: line, isHeading: false });
+        for (const word of words) {
+          const testLine = currentLine ? currentLine + ' ' + word : word;
+          const isIndentedRow = wrappedLines.length < dropCapLinesCount;
+          const activeMaxWidth = isIndentedRow ? (contentWidthPts - dropCapOffsetVal) : contentWidthPts;
+          const maxChars = Math.max(8, Math.floor(activeMaxWidth / fontScale));
+
+          if (testLine.length > maxChars && currentLine) {
+            wrappedLines.push(currentLine);
+            currentLine = word;
+          } else {
+            currentLine = testLine;
+          }
+        }
+        if (currentLine) {
+          wrappedLines.push(currentLine);
+        }
+
+        // Push wrapped lines
+        for (let li = 0; li < wrappedLines.length; li++) {
+          const isIndentedRow = li < dropCapLinesCount;
+          currentLines.push({
+            text: wrappedLines[li],
+            isHeading: false,
+            dropCapChar: li === 0 ? dropCapChar : undefined,
+            dropCapOffset: isIndentedRow ? dropCapOffsetVal : undefined,
+            dropCapLinesCount: dropCapLinesCount,
+            dropCapColor: settings.dropCapColor || '#4f46e5'
+          });
+        }
+      } else {
+        // Ordinary paragraph layout logic
+        const shouldIndent = settings.paragraphStyle === 'indent' && pIdx > 0;
+        const displayPrefix = shouldIndent ? '      ' : ''; // indent approximation
+        const textToWrap = displayPrefix + pText;
+        const wrappedLines = wrapParagraph_internal(textToWrap, contentWidthPts, false);
+
+        for (const line of wrappedLines) {
+          currentLines.push({ text: line, isHeading: false });
+        }
       }
 
       // Add a spacer line if block spacing is selected
@@ -278,57 +352,77 @@ export async function compileCoverPDF(settings: CoverSettings, coverImageBlob: B
 
   // spine width in inches
   const spineWidth = calculateSpineWidth(settings.platform, settings.paperColor, settings.pageCount);
-  const bleed = 0.125; // standard KDP & Ingram bleed
+  
+  let totalWidthPts = 0;
+  let totalHeightPts = 0;
 
-  // Total flat dimensions in points
-  const totalWidthPts = inchesToPts((trimWidth * 2) + spineWidth + (bleed * 2));
-  const totalHeightPts = inchesToPts(trimHeight + (bleed * 2));
+  // Sheet and offset specifications based on physical layout bounds
+  let flapWidthPts = 0;
+  let backCoverWidthPts = 0;
+  let spineWidthPts = inchesToPts(spineWidth);
+  let frontCoverWidthPts = 0;
+
+  let leftEdgePts = 0;
+  let spineLeftPts = 0;
+  let frontLeftPts = 0;
+
+  if (settings.binding === 'hardcover-case') {
+    // Case Laminate Hardcover: Board extensions adding 0.25", and wrap bleeds of 0.625" (5/8") all around
+    const wrap = 0.625;
+    totalHeightPts = inchesToPts(trimHeight + 0.25 + (wrap * 2));
+    totalWidthPts = inchesToPts((trimWidth * 2) + spineWidth + 1.75);
+
+    backCoverWidthPts = inchesToPts(trimWidth - 0.125 + wrap);
+    const jointPts = inchesToPts(0.375);
+    spineLeftPts = backCoverWidthPts + jointPts;
+    frontLeftPts = spineLeftPts + spineWidthPts + jointPts;
+    frontCoverWidthPts = inchesToPts(trimWidth - 0.125 + wrap);
+  } else if (settings.binding === 'hardcover-jacket') {
+    // Jacketed Hardcover Dust Cover: Left Flap + Back Cover + Spine + Front Cover + Right Flap + 0.125" bleed
+    const flapWidth = settings.flapWidth || 3.25;
+    const bleed = 0.125;
+    totalHeightPts = inchesToPts(trimHeight + 0.25 + (bleed * 2));
+    totalWidthPts = inchesToPts((flapWidth * 2) + ((trimWidth + 0.0625) * 2) + spineWidth + (bleed * 2));
+
+    flapWidthPts = inchesToPts(flapWidth + bleed);
+    backCoverWidthPts = inchesToPts(trimWidth + 0.0625);
+    spineLeftPts = flapWidthPts + backCoverWidthPts;
+    frontLeftPts = spineLeftPts + spineWidthPts;
+    frontCoverWidthPts = inchesToPts(trimWidth + 0.0625);
+  } else {
+    // Paperback (default)
+    const bleed = 0.125;
+    totalHeightPts = inchesToPts(trimHeight + (bleed * 2));
+    totalWidthPts = inchesToPts((trimWidth * 2) + spineWidth + (bleed * 2));
+
+    backCoverWidthPts = inchesToPts(trimWidth + bleed);
+    spineLeftPts = backCoverWidthPts;
+    frontLeftPts = spineLeftPts + spineWidthPts;
+    frontCoverWidthPts = inchesToPts(trimWidth + bleed);
+  }
 
   const page = pdfDoc.addPage([totalWidthPts, totalHeightPts]);
 
-  // Fill Background Base Color (Mode A)
-  const hexToColorVec = (hex: string) => {
-    const r = parseInt(hex.substring(1, 3), 16) / 255;
-    const g = parseInt(hex.substring(3, 5), 16) / 255;
-    const b = parseInt(hex.substring(5, 7), 16) / 255;
-    return rgb(r, g, b);
-  };
-
-  // 1. Draw solid background across entire spread or back cover
+  // 1. Draw solid background panels across the computed boundaries (Mode A)
   const spineBg = hexToColorVec(settings.spineBgColor);
   const backBg = hexToColorVec(settings.backBgColor);
   
-  // Left side (Back cover)
-  const leftEdgePts = 0;
-  const backCoverWidthPts = inchesToPts(trimWidth + bleed);
+  // Fill background
   page.drawRectangle({
-    x: leftEdgePts,
+    x: 0,
     y: 0,
-    width: backCoverWidthPts,
+    width: totalWidthPts,
     height: totalHeightPts,
     color: backBg,
   });
 
-  // Center (Spine)
-  const spineLeftPts = backCoverWidthPts;
-  const spineWidthPts = inchesToPts(spineWidth);
+  // Specifically paint spine
   page.drawRectangle({
     x: spineLeftPts,
     y: 0,
     width: spineWidthPts,
     height: totalHeightPts,
     color: spineBg,
-  });
-
-  // Right side (Front cover)
-  const frontLeftPts = spineLeftPts + spineWidthPts;
-  const frontWidthPts = inchesToPts(trimWidth + bleed);
-  page.drawRectangle({
-    x: frontLeftPts,
-    y: 0,
-    width: frontWidthPts,
-    height: totalHeightPts,
-    color: backBg, // fallback
   });
 
   // Embedded image processing for front cover
@@ -340,11 +434,11 @@ export async function compileCoverPDF(settings: CoverSettings, coverImageBlob: B
     } else {
       embedImg = await pdfDoc.embedJpg(imgBytes);
     }
-    // Stretch to exact bleed size of front cover
+    // Fits exact calculated front cover boundary
     page.drawImage(embedImg, {
       x: frontLeftPts,
       y: 0,
-      width: frontWidthPts,
+      width: frontCoverWidthPts,
       height: totalHeightPts,
     });
   }
@@ -355,10 +449,12 @@ export async function compileCoverPDF(settings: CoverSettings, coverImageBlob: B
     const embedBackImg = backImageBlob.type === 'image/png' 
       ? await pdfDoc.embedPng(imgBytes) 
       : await pdfDoc.embedJpg(imgBytes);
+    
+    const backImageWidth = settings.binding === 'hardcover-jacket' ? backCoverWidthPts + flapWidthPts : backCoverWidthPts;
     page.drawImage(embedBackImg, {
       x: 0,
       y: 0,
-      width: backCoverWidthPts,
+      width: backImageWidth,
       height: totalHeightPts,
     });
   }
@@ -391,13 +487,15 @@ export async function compileCoverPDF(settings: CoverSettings, coverImageBlob: B
     const timesRoman = await pdfDoc.embedFont(StandardFonts.TimesRoman);
     const textColor = hexToColorVec(settings.backTextColor);
 
+    const backCoverContentStartX = settings.binding === 'hardcover-jacket' ? flapWidthPts + inchesToPts(0.6) : inchesToPts(0.6);
+
     // Draw description synopsis
     if (settings.backDescription) {
       const sanitizedBackDesc = sanitizeForWinAnsi(settings.backDescription);
       const synWords = sanitizedBackDesc.split(' ');
       let currentLine = '';
       let yOffset = totalHeightPts - inchesToPts(0.8);
-      const startX = inchesToPts(0.6);
+      const startX = backCoverContentStartX;
       const maxWidth = backCoverWidthPts - inchesToPts(1.2);
 
       for (const w of synWords) {
@@ -417,8 +515,9 @@ export async function compileCoverPDF(settings: CoverSettings, coverImageBlob: B
 
     // Barcode space
     if (settings.showBarcodePlaceholder) {
+      const barcodeX = settings.binding === 'hardcover-jacket' ? flapWidthPts + inchesToPts(0.6) : inchesToPts(0.6);
       page.drawRectangle({
-        x: inchesToPts(0.6),
+        x: barcodeX,
         y: inchesToPts(0.6),
         width: 100,
         height: 60,
@@ -427,7 +526,7 @@ export async function compileCoverPDF(settings: CoverSettings, coverImageBlob: B
         borderWidth: 1,
       });
       page.drawText('ISBN BARCODE PLACEHOLDER', {
-        x: inchesToPts(0.65),
+        x: barcodeX + 5,
         y: inchesToPts(1.0),
         size: 6,
         font: timesRoman,
@@ -461,9 +560,20 @@ export async function compileInteriorPDF(
   const renderedPages = typesetManuscript(chapters, settings);
 
   // Load standard standard fonts
-  const fontRegular = await pdfDoc.embedFont(StandardFonts.TimesRoman);
-  const fontBold = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
-  const fontItalic = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
+  let fontRegular = await pdfDoc.embedFont(StandardFonts.TimesRoman);
+  let fontBold = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
+  let fontItalic = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
+
+  // Try loading chosen custom Google Font
+  const selectedFont = FONTS_LIST.find(f => f.name === settings.bodyFont || f.id === settings.bodyFont);
+  if (selectedFont && selectedFont.url) {
+    try {
+      const fontBytes = await fetchFontAsUint8(selectedFont.url);
+      fontRegular = await pdfDoc.embedFont(fontBytes);
+    } catch (e) {
+      console.warn("Failed to load custom body font. Using standard Times Roman fallback.", e);
+    }
+  }
 
   const totalPagesCount = renderedPages.length;
 
@@ -521,10 +631,34 @@ export async function compileInteriorPDF(
       const lineText = sanitizeForWinAnsi(line.text);
       
       if (line.isHeading) {
-        // Center Heading text
-        const hWidth = fontBold.widthOfTextAtSize(lineText, h1Size);
-        const hX = (widthPts - hWidth) / 2;
+        const hAlign = line.align || 'center';
+        let hX = leftMargin;
+        if (hAlign === 'center') {
+          const hWidth = fontBold.widthOfTextAtSize(lineText, h1Size);
+          hX = (widthPts - hWidth) / 2;
+        }
         cursorY -= h1Leading;
+
+        // Draw double decorative fancy frames rules if enabled
+        if (line.isFancyFrame) {
+          const borderYTop = cursorY + h1Size + 2;
+          const borderYBottom = cursorY - 6;
+          // draw top bar
+          page.drawLine({
+            start: { x: leftMargin, y: borderYTop },
+            end: { x: widthPts - rightMargin, y: borderYTop },
+            thickness: 1,
+            color: rgb(0.15, 0.15, 0.15),
+          });
+          // draw bottom bar
+          page.drawLine({
+            start: { x: leftMargin, y: borderYBottom },
+            end: { x: widthPts - rightMargin, y: borderYBottom },
+            thickness: 0.5,
+            color: rgb(0.25, 0.25, 0.25),
+          });
+        }
+
         page.drawText(lineText, {
           x: hX,
           y: cursorY,
@@ -532,9 +666,8 @@ export async function compileInteriorPDF(
           font: fontBold,
           color: rgb(0.1, 0.1, 0.1),
         });
-        cursorY -= 12; // extra padding after heading
+        cursorY -= line.isFancyFrame ? 18 : 12; // extra padding after heading
       } else if (line.isOrnament) {
-        // Center chapter star ornaments
         const oWidth = fontRegular.widthOfTextAtSize(lineText, 10);
         const oX = (widthPts - oWidth) / 2;
         page.drawText(lineText, {
@@ -542,13 +675,36 @@ export async function compileInteriorPDF(
           y: cursorY,
           size: 10,
           font: fontRegular,
-          color: rgb(0.4, 0.4, 0.4),
+          color: rgb(0.35, 0.35, 0.35),
         });
         cursorY -= leading;
       } else {
-        // Standard body paragraph line
+        // Standard body paragraph line, with optional drop-cap offset and rendering
+        let activeX = leftMargin;
+        if (line.dropCapOffset) {
+          activeX += line.dropCapOffset;
+        }
+
+        if (line.dropCapChar) {
+          const numLines = line.dropCapLinesCount || 3;
+          // Calculate drop-cap font size to stretch across numLines height
+          const dcFontSize = leading * numLines * 1.05;
+          const dcColor = line.dropCapColor ? hexToColorVec(line.dropCapColor) : rgb(0.31, 0.27, 0.9);
+          
+          // Drop cap baseline aligns with bottom line baseline of group
+          const dcY = cursorY - (numLines - 1) * leading + 2;
+
+          page.drawText(line.dropCapChar, {
+            x: leftMargin,
+            y: dcY,
+            size: dcFontSize,
+            font: fontBold, // bold serif drop cap representation
+            color: dcColor,
+          });
+        }
+
         page.drawText(lineText, {
-          x: leftMargin,
+          x: activeX,
           y: cursorY,
           size: bodySize,
           font: fontRegular,
