@@ -53,6 +53,421 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isCompiling, setIsCompiling] = useState<boolean>(false);
 
+  // Layout editor dragging / resizing state
+  const [selectedImage, setSelectedImage] = useState<'front' | 'back' | null>(null);
+  const isDraggingRef = useRef<boolean>(false);
+  const isResizingRef = useRef<boolean>(false);
+  const activeHandleRef = useRef<string | null>(null);
+  const dragStartMouseRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const dragStartImageRef = useRef<{ x: number; y: number; w: number; h: number }>({ x: 0, y: 0, w: 0, h: 0 });
+
+  // Web-Safe preloaded images references to bypass browser download flicker
+  const [frontImgLoaded, setFrontImgLoaded] = useState<boolean>(false);
+  const [backImgLoaded, setBackImgLoaded] = useState<boolean>(false);
+  const frontImgRef = useRef<HTMLImageElement | null>(null);
+  const backImgRef = useRef<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    if (frontImgUrl) {
+      const img = new Image();
+      img.src = frontImgUrl;
+      img.onload = () => {
+        frontImgRef.current = img;
+        setFrontImgLoaded(prev => !prev); // toggle trigger redraw
+      };
+    } else {
+      frontImgRef.current = null;
+    }
+  }, [frontImgUrl]);
+
+  useEffect(() => {
+    if (backImgUrl) {
+      const img = new Image();
+      img.src = backImgUrl;
+      img.onload = () => {
+        backImgRef.current = img;
+        setBackImgLoaded(prev => !prev); // toggle trigger redraw
+      };
+    } else {
+      backImgRef.current = null;
+    }
+  }, [backImgUrl]);
+
+  // Convert current physical specifications and custom layout transforms to coordinate pixels
+  const getImageBounds = (scale: number) => {
+    const flapWidthScale = (settings.binding === 'hardcover-jacket' ? (settings.flapWidth || 3.25) + 0.125 : 0) * scale;
+    const backCoverWidthScale = backCoverWidthPts * scale;
+    const spineWidthScale = calculatedSpine * scale;
+
+    const spineStartX = settings.binding === 'hardcover-jacket' 
+      ? flapWidthScale + backCoverWidthScale 
+      : (settings.binding === 'hardcover-case' ? backCoverWidthScale + 0.375 * scale : backCoverWidthScale);
+    const frontStartX = settings.binding === 'hardcover-jacket'
+      ? spineStartX + spineWidthScale
+      : (settings.binding === 'hardcover-case' ? spineStartX + spineWidthScale + 0.375 * scale : spineStartX + spineWidthScale);
+
+    const frontStartXInches = frontStartX / scale;
+    const frontWidthInches = frontCoverWidthPts / 72;
+
+    const fx = settings.frontImageX !== undefined ? settings.frontImageX : 0;
+    const fy = settings.frontImageY !== undefined ? settings.frontImageY : 0;
+    const fw = settings.frontImageWidth !== undefined ? settings.frontImageWidth : frontWidthInches;
+    const fh = settings.frontImageHeight !== undefined ? settings.frontImageHeight : totalFlatHeight;
+
+    const backWidthInches = settings.binding === 'hardcover-jacket' ? (backCoverWidthPts / 72) + (settings.flapWidth || 3.25) + 0.125 : backCoverWidthPts / 72;
+
+    const bx = settings.backImageX !== undefined ? settings.backImageX : 0;
+    const by = settings.backImageY !== undefined ? settings.backImageY : 0;
+    const bw = settings.backImageWidth !== undefined ? settings.backImageWidth : backWidthInches;
+    const bh = settings.backImageHeight !== undefined ? settings.backImageHeight : totalFlatHeight;
+
+    return {
+      front: {
+        x: (frontStartXInches + fx) * scale,
+        y: fy * scale,
+        w: fw * scale,
+        h: fh * scale,
+        origStartXInches: frontStartXInches,
+        origWidthInches: frontWidthInches,
+      },
+      back: {
+        x: bx * scale,
+        y: by * scale,
+        w: bw * scale,
+        h: bh * scale,
+        origStartXInches: 0,
+        origWidthInches: backWidthInches,
+      }
+    };
+  };
+
+  const getMouseCoords = (e: React.MouseEvent<HTMLCanvasElement> | TouchEvent | any) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    
+    let clientX = 0;
+    let clientY = 0;
+    
+    if (e.touches && e.touches.length > 0) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else if (e.changedTouches && e.changedTouches.length > 0) {
+      clientX = e.changedTouches[0].clientX;
+      clientY = e.changedTouches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+
+    const x = ((clientX - rect.left) / rect.width) * canvas.width;
+    const y = ((clientY - rect.top) / rect.height) * canvas.height;
+    return { x, y };
+  };
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const { x, y } = getMouseCoords(e);
+    const scale = canvas.width / totalFlatWidth;
+    const bounds = getImageBounds(scale);
+
+    // 1. Check if we clicked on a resize handle for the currently selected image
+    if (selectedImage) {
+      const activeBox = selectedImage === 'front' ? bounds.front : bounds.back;
+      const handles = {
+        TL: { x: activeBox.x, y: activeBox.y },
+        TC: { x: activeBox.x + activeBox.w / 2, y: activeBox.y },
+        TR: { x: activeBox.x + activeBox.w, y: activeBox.y },
+        MR: { x: activeBox.x + activeBox.w, y: activeBox.y + activeBox.h / 2 },
+        BR: { x: activeBox.x + activeBox.w, y: activeBox.y + activeBox.h },
+        BC: { x: activeBox.x + activeBox.w / 2, y: activeBox.y + activeBox.h },
+        BL: { x: activeBox.x, y: activeBox.y + activeBox.h },
+        ML: { x: activeBox.x, y: activeBox.y + activeBox.h / 2 },
+      };
+
+      for (const [key, h] of Object.entries(handles)) {
+        if (Math.abs(x - h.x) <= 8 && Math.abs(y - h.y) <= 8) {
+          isResizingRef.current = true;
+          activeHandleRef.current = key;
+          dragStartMouseRef.current = { x, y };
+          dragStartImageRef.current = { x: activeBox.x, y: activeBox.y, w: activeBox.w, h: activeBox.h };
+          return;
+        }
+      }
+    }
+
+    // 2. Click front image body?
+    if (frontImgUrl && x >= bounds.front.x && x <= bounds.front.x + bounds.front.w && y >= bounds.front.y && y <= bounds.front.y + bounds.front.h) {
+      setSelectedImage('front');
+      isDraggingRef.current = true;
+      dragStartMouseRef.current = { x, y };
+      dragStartImageRef.current = { x: bounds.front.x, y: bounds.front.y, w: bounds.front.w, h: bounds.front.h };
+      return;
+    }
+
+    // 3. Click back image body?
+    if (backImgUrl && x >= bounds.back.x && x <= bounds.back.x + bounds.back.w && y >= bounds.back.y && y <= bounds.back.y + bounds.back.h) {
+      setSelectedImage('back');
+      isDraggingRef.current = true;
+      dragStartMouseRef.current = { x, y };
+      dragStartImageRef.current = { x: bounds.back.x, y: bounds.back.y, w: bounds.back.w, h: bounds.back.h };
+      return;
+    }
+
+    // 4. Clicked outside both
+    setSelectedImage(null);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const { x, y } = getMouseCoords(e);
+    const scale = canvas.width / totalFlatWidth;
+    const bounds = getImageBounds(scale);
+
+    if (isResizingRef.current && selectedImage) {
+      const dx = x - dragStartMouseRef.current.x;
+      const dy = y - dragStartMouseRef.current.y;
+      const start = dragStartImageRef.current;
+      
+      let newX = start.x;
+      let newY = start.y;
+      let newW = start.w;
+      let newH = start.h;
+
+      const handle = activeHandleRef.current;
+
+      if (handle === 'TL') {
+        newX = start.x + dx; newY = start.y + dy;
+        newW = start.w - dx; newH = start.h - dy;
+      } else if (handle === 'TR') {
+        newY = start.y + dy;
+        newW = start.w + dx; newH = start.h - dy;
+      } else if (handle === 'BL') {
+        newX = start.x + dx;
+        newW = start.w - dx; newH = start.h + dy;
+      } else if (handle === 'BR') {
+        newW = start.w + dx; newH = start.h + dy;
+      } else if (handle === 'TC') {
+        newY = start.y + dy;
+        newH = start.h - dy;
+      } else if (handle === 'BC') {
+        newH = start.h + dy;
+      } else if (handle === 'ML') {
+        newX = start.x + dx;
+        newW = start.w - dx;
+      } else if (handle === 'MR') {
+        newW = start.w + dx;
+      }
+
+      // Constrain size to a minimum of 0.5 inches is extremely logical
+      const minSizeInPx = 0.5 * scale;
+      if (newW < minSizeInPx) {
+        if (handle === 'TL' || handle === 'BL' || handle === 'ML') {
+          newX = start.x + start.w - minSizeInPx;
+        }
+        newW = minSizeInPx;
+      }
+      if (newH < minSizeInPx) {
+        if (handle === 'TL' || handle === 'TR' || handle === 'TC') {
+          newY = start.y + start.h - minSizeInPx;
+        }
+        newH = minSizeInPx;
+      }
+
+      // Map back to inches
+      if (selectedImage === 'front') {
+        const fx_inches = (newX / scale) - bounds.front.origStartXInches;
+        const fy_inches = newY / scale;
+        const fw_inches = newW / scale;
+        const fh_inches = newH / scale;
+
+        setSettings(prev => ({
+          ...prev,
+          frontImageX: fx_inches,
+          frontImageY: fy_inches,
+          frontImageWidth: fw_inches,
+          frontImageHeight: fh_inches,
+        }));
+      } else {
+        const bx_inches = newX / scale;
+        const by_inches = newY / scale;
+        const bw_inches = newW / scale;
+        const bh_inches = newH / scale;
+
+        setSettings(prev => ({
+          ...prev,
+          backImageX: bx_inches,
+          backImageY: by_inches,
+          backImageWidth: bw_inches,
+          backImageHeight: bh_inches,
+        }));
+      }
+    } else if (isDraggingRef.current && selectedImage) {
+      const dx = x - dragStartMouseRef.current.x;
+      const dy = y - dragStartMouseRef.current.y;
+      const start = dragStartImageRef.current;
+
+      const newX = start.x + dx;
+      const newY = start.y + dy;
+
+      if (selectedImage === 'front') {
+        const fx_inches = (newX / scale) - bounds.front.origStartXInches;
+        const fy_inches = newY / scale;
+
+        setSettings(prev => ({
+          ...prev,
+          frontImageX: fx_inches,
+          frontImageY: fy_inches,
+        }));
+      } else {
+        const bx_inches = newX / scale;
+        const by_inches = newY / scale;
+
+        setSettings(prev => ({
+          ...prev,
+          backImageX: bx_inches,
+          backImageY: by_inches,
+        }));
+      }
+    } else {
+      // 3. Hovering styling cursor
+      let cursorStyle = 'default';
+
+      if (selectedImage) {
+        const activeBox = selectedImage === 'front' ? bounds.front : bounds.back;
+        const handles = {
+          TL: { x: activeBox.x, y: activeBox.y },
+          TC: { x: activeBox.x + activeBox.w / 2, y: activeBox.y },
+          TR: { x: activeBox.x + activeBox.w, y: activeBox.y },
+          MR: { x: activeBox.x + activeBox.w, y: activeBox.y + activeBox.h / 2 },
+          BR: { x: activeBox.x + activeBox.w, y: activeBox.y + activeBox.h },
+          BC: { x: activeBox.x + activeBox.w / 2, y: activeBox.y + activeBox.h },
+          BL: { x: activeBox.x, y: activeBox.y + activeBox.h },
+          ML: { x: activeBox.x, y: activeBox.y + activeBox.h / 2 },
+        };
+
+        let overHandle = false;
+        for (const [key, h] of Object.entries(handles)) {
+          if (Math.abs(x - h.x) <= 8 && Math.abs(y - h.y) <= 8) {
+            overHandle = true;
+            if (key === 'TL' || key === 'BR') cursorStyle = 'nwse-resize';
+            else if (key === 'TR' || key === 'BL') cursorStyle = 'nesw-resize';
+            else if (key === 'ML' || key === 'MR') cursorStyle = 'ew-resize';
+            else if (key === 'TC' || key === 'BC') cursorStyle = 'ns-resize';
+            break;
+          }
+        }
+
+        if (!overHandle) {
+          if (x >= activeBox.x && x <= activeBox.x + activeBox.w && y >= activeBox.y && y <= activeBox.y + activeBox.h) {
+            cursorStyle = 'move';
+          }
+        }
+      }
+
+      // Check hover for unselected images to give a Pointer hint
+      if (cursorStyle === 'default') {
+        if (frontImgUrl && x >= bounds.front.x && x <= bounds.front.x + bounds.front.w && y >= bounds.front.y && y <= bounds.front.y + bounds.front.h) {
+          cursorStyle = 'pointer';
+        } else if (backImgUrl && x >= bounds.back.x && x <= bounds.back.x + bounds.back.w && y >= bounds.back.y && y <= bounds.back.y + bounds.back.h) {
+          cursorStyle = 'pointer';
+        }
+      }
+
+      canvas.style.cursor = cursorStyle;
+    }
+  };
+
+  const handleMouseUp = () => {
+    isDraggingRef.current = false;
+    isResizingRef.current = false;
+    activeHandleRef.current = null;
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const { x, y } = getMouseCoords(e);
+    const scale = canvas.width / totalFlatWidth;
+    const bounds = getImageBounds(scale);
+
+    if (selectedImage) {
+      const activeBox = selectedImage === 'front' ? bounds.front : bounds.back;
+      const handles = {
+        TL: { x: activeBox.x, y: activeBox.y },
+        TC: { x: activeBox.x + activeBox.w / 2, y: activeBox.y },
+        TR: { x: activeBox.x + activeBox.w, y: activeBox.y },
+        MR: { x: activeBox.x + activeBox.w, y: activeBox.y + activeBox.h / 2 },
+        BR: { x: activeBox.x + activeBox.w, y: activeBox.y + activeBox.h },
+        BC: { x: activeBox.x + activeBox.w / 2, y: activeBox.y + activeBox.h },
+        BL: { x: activeBox.x, y: activeBox.y + activeBox.h },
+        ML: { x: activeBox.x, y: activeBox.y + activeBox.h / 2 },
+      };
+
+      for (const [key, h] of Object.entries(handles)) {
+        if (Math.abs(x - h.x) <= 16 && Math.abs(y - h.y) <= 16) { // slightly larger for fingers
+          isResizingRef.current = true;
+          activeHandleRef.current = key;
+          dragStartMouseRef.current = { x, y };
+          dragStartImageRef.current = { x: activeBox.x, y: activeBox.y, w: activeBox.w, h: activeBox.h };
+          return;
+        }
+      }
+    }
+
+    if (frontImgUrl && x >= bounds.front.x && x <= bounds.front.x + bounds.front.w && y >= bounds.front.y && y <= bounds.front.y + bounds.front.h) {
+      setSelectedImage('front');
+      isDraggingRef.current = true;
+      dragStartMouseRef.current = { x, y };
+      dragStartImageRef.current = { x: bounds.front.x, y: bounds.front.y, w: bounds.front.w, h: bounds.front.h };
+      return;
+    }
+
+    if (backImgUrl && x >= bounds.back.x && x <= bounds.back.x + bounds.back.w && y >= bounds.back.y && y <= bounds.back.y + bounds.back.h) {
+      setSelectedImage('back');
+      isDraggingRef.current = true;
+      dragStartMouseRef.current = { x, y };
+      dragStartImageRef.current = { x: bounds.back.x, y: bounds.back.y, w: bounds.back.w, h: bounds.back.h };
+      return;
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if ((isDraggingRef.current || isResizingRef.current) && selectedImage) {
+      if (e.touches && e.touches.length > 0) {
+        const fakeEv = {
+          clientX: e.touches[0].clientX,
+          clientY: e.touches[0].clientY,
+        } as any;
+        handleMouseMove(fakeEv);
+      }
+    }
+  };
+
+  const handleResetImageTransform = (type: 'front' | 'back') => {
+    if (type === 'front') {
+      setSettings(prev => {
+        const copy = { ...prev };
+        delete copy.frontImageX;
+        delete copy.frontImageY;
+        delete copy.frontImageWidth;
+        delete copy.frontImageHeight;
+        return copy;
+      });
+    } else {
+      setSettings(prev => {
+        const copy = { ...prev };
+        delete copy.backImageX;
+        delete copy.backImageY;
+        delete copy.backImageWidth;
+        delete copy.backImageHeight;
+        return copy;
+      });
+    }
+  };
+
   // Upload state for Mode B (Full wrap)
   const [fullWrapBlob, setFullWrapBlob] = useState<File | null>(null);
   const [fullWrapRatio, setFullWrapRatio] = useState<number>(0);
@@ -187,15 +602,17 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
     ctx.fillStyle = settings.spineBgColor;
     ctx.fillRect(spineStartX, 0, spineWidthScale, drawHeight);
 
-    // Draw uploaded front image on front cover if uploaded
-    if (frontImgUrl) {
-      const frontImg = new Image();
-      frontImg.src = frontImgUrl;
-      frontImg.onload = () => {
-        ctx.drawImage(frontImg, frontStartX, 0, frontCoverWidthScale, drawHeight);
-        drawGuidesAndTexts();
-      };
-    } else {
+    const bounds = getImageBounds(scale);
+
+    // Draw back image if uploaded and loaded
+    if (backImgUrl && backImgRef.current) {
+      ctx.drawImage(backImgRef.current, bounds.back.x, bounds.back.y, bounds.back.w, bounds.back.h);
+    }
+
+    // Draw uploaded front image on front cover if uploaded and loaded
+    if (frontImgUrl && frontImgRef.current) {
+      ctx.drawImage(frontImgRef.current, bounds.front.x, bounds.front.y, bounds.front.w, bounds.front.h);
+    } else if (!frontImgUrl) {
       // Draw placeholder front text
       ctx.fillStyle = '#64748b';
       ctx.font = 'italic 15px serif';
@@ -203,18 +620,7 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
       ctx.fillText('[ Front Cover Art Placeholder ]', frontStartX + (frontCoverWidthScale / 2), drawHeight / 2);
     }
 
-    // Draw back image if uploaded
-    if (backImgUrl) {
-      const backImg = new Image();
-      backImg.src = backImgUrl;
-      backImg.onload = () => {
-        const backDrawWidth = settings.binding === 'hardcover-jacket' ? backCoverWidthScale + flapWidthScale : backCoverWidthScale;
-        ctx.drawImage(backImg, 0, 0, backDrawWidth, drawHeight);
-        drawGuidesAndTexts();
-      };
-    }
-
-    // Trigger initial render in case images are missing
+    // Draw boundaries guides, secondary overlays, spine rotated text
     drawGuidesAndTexts();
 
     function drawGuidesAndTexts() {
@@ -320,8 +726,44 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
         ctx.fillStyle = 'rgba(37, 99, 235, 0.7)';
         ctx.fillText('Spine Safety Zones', spineStartX + spineWidthScale + 6, drawHeight - 14);
       }
+
+      // Draw Selected Image outline & 8 grab handles
+      if (selectedImage && (selectedImage === 'front' ? frontImgUrl : backImgUrl)) {
+        const activeBox = selectedImage === 'front' ? bounds.front : bounds.back;
+
+        ctx.strokeStyle = '#6366f1'; // Indigo select border
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 3]);
+        ctx.strokeRect(activeBox.x, activeBox.y, activeBox.w, activeBox.h);
+        ctx.setLineDash([]); // Reset dash
+
+        // Grab handles (8 coordinates)
+        const handleSize = 8;
+        const hHalf = handleSize / 2;
+        const handles = [
+          { x: activeBox.x, y: activeBox.y }, // TL
+          { x: activeBox.x + activeBox.w / 2, y: activeBox.y }, // TC
+          { x: activeBox.x + activeBox.w, y: activeBox.y }, // TR
+          { x: activeBox.x + activeBox.w, y: activeBox.y + activeBox.h / 2 }, // MR
+          { x: activeBox.x + activeBox.w, y: activeBox.y + activeBox.h }, // BR
+          { x: activeBox.x + activeBox.w / 2, y: activeBox.y + activeBox.h }, // BC
+          { x: activeBox.x, y: activeBox.y + activeBox.h }, // BL
+          { x: activeBox.x, y: activeBox.y + activeBox.h / 2 }, // ML
+        ];
+
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#4f46e5';
+        ctx.lineWidth = 1.5;
+        for (const h of handles) {
+          ctx.fillRect(h.x - hHalf, h.y - hHalf, handleSize, handleSize);
+          ctx.strokeRect(h.x - hHalf, h.y - hHalf, handleSize, handleSize);
+        }
+      }
     }
-  }, [settings, totalFlatWidth, totalFlatHeight, showGuides, frontImgUrl, backImgUrl]);
+  }, [
+    settings, totalFlatWidth, totalFlatHeight, showGuides, frontImgUrl, backImgUrl,
+    frontImgLoaded, backImgLoaded, selectedImage
+  ]);
 
   // Handle Cover Downloading
   const triggerDownloadCover = async () => {
@@ -540,6 +982,241 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
                   />
                 </div>
 
+                {/* Cover Image Stretching and Position Controls Panel */}
+                {(frontImgUrl || backImgUrl) && (
+                  <div id="image-transform-controls" className="border border-slate-250 rounded-lg p-4 bg-indigo-50/25 space-y-3.5 font-mono text-[11px] text-slate-700">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                      <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                        <Palette className="w-4 h-4 text-indigo-600 animate-pulse" />
+                        COVER ART LAYOUT CONTROLS
+                      </span>
+                      <span className="text-[9px] text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded uppercase font-bold">Manual Overrides</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedImage(frontImgUrl ? 'front' : null)}
+                        disabled={!frontImgUrl}
+                        className={`py-1 px-2.5 rounded text-center border font-bold text-[10px] transition-all cursor-pointer ${
+                          selectedImage === 'front' 
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs' 
+                            : 'bg-white hover:bg-slate-50 text-slate-600 border-slate-200 disabled:opacity-40 disabled:cursor-not-allowed'
+                        }`}
+                      >
+                        Front Artwork
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedImage(backImgUrl ? 'back' : null)}
+                        disabled={!backImgUrl}
+                        className={`py-1 px-2.5 rounded text-center border font-bold text-[10px] transition-all cursor-pointer ${
+                          selectedImage === 'back' 
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs' 
+                            : 'bg-white hover:bg-slate-50 text-slate-600 border-slate-200 disabled:opacity-40 disabled:cursor-not-allowed'
+                        }`}
+                      >
+                        Back Artwork
+                      </button>
+                    </div>
+
+                    {selectedImage ? (
+                      <div className="space-y-3 pt-2.5 border-t border-dashed border-slate-200">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-indigo-950 uppercase text-[10px]">
+                            {selectedImage === 'front' ? 'FRONT' : 'BACK'} IMAGE PLACEMENT
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleResetImageTransform(selectedImage)}
+                            className="text-[10px] text-red-600 hover:text-red-700 font-bold hover:underline cursor-pointer"
+                          >
+                            Reset Stretch
+                          </button>
+                        </div>
+
+                        {/* X and Y positional offsets */}
+                        <div className="grid grid-cols-2 gap-3.5">
+                          <div>
+                            <span className="block text-[9px] text-slate-400 uppercase mb-1 font-bold">X Offset</span>
+                            <div className="flex items-center border border-slate-200 rounded overflow-hidden shadow-xs bg-white">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (selectedImage === 'front') {
+                                    setSettings(p => ({ ...p, frontImageX: (p.frontImageX || 0) - 0.05 }));
+                                  } else {
+                                    setSettings(p => ({ ...p, backImageX: (p.backImageX || 0) - 0.05 }));
+                                  }
+                                }}
+                                className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-600 text-xs border-r border-slate-200 font-bold cursor-pointer"
+                              >
+                                -
+                              </button>
+                              <span className="w-full text-center py-1 text-slate-900 font-bold">
+                                {selectedImage === 'front' 
+                                  ? (settings.frontImageX || 0).toFixed(2) 
+                                  : (settings.backImageX || 0).toFixed(2)
+                                }"
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (selectedImage === 'front') {
+                                    setSettings(p => ({ ...p, frontImageX: (p.frontImageX || 0) + 0.05 }));
+                                  } else {
+                                    setSettings(p => ({ ...p, backImageX: (p.backImageX || 0) + 0.05 }));
+                                  }
+                                }}
+                                className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-600 text-xs border-l border-slate-200 font-bold cursor-pointer"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+
+                          <div>
+                            <span className="block text-[9px] text-slate-400 uppercase mb-1 font-bold">Y Offset</span>
+                            <div className="flex items-center border border-slate-200 rounded overflow-hidden shadow-xs bg-white">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (selectedImage === 'front') {
+                                    setSettings(p => ({ ...p, frontImageY: (p.frontImageY || 0) - 0.05 }));
+                                  } else {
+                                    setSettings(p => ({ ...p, backImageY: (p.backImageY || 0) - 0.05 }));
+                                  }
+                                }}
+                                className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-600 text-xs border-r border-slate-200 font-bold cursor-pointer"
+                              >
+                                -
+                              </button>
+                              <span className="w-full text-center py-1 text-slate-900 font-bold">
+                                {selectedImage === 'front' 
+                                  ? (settings.frontImageY || 0).toFixed(2) 
+                                  : (settings.backImageY || 0).toFixed(2)
+                                }"
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (selectedImage === 'front') {
+                                    setSettings(p => ({ ...p, frontImageY: (p.frontImageY || 0) + 0.05 }));
+                                  } else {
+                                    setSettings(p => ({ ...p, backImageY: (p.backImageY || 0) + 0.05 }));
+                                  }
+                                }}
+                                className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-600 text-xs border-l border-slate-200 font-bold cursor-pointer"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Width and height scales */}
+                        <div className="grid grid-cols-2 gap-3.5">
+                          <div>
+                            <span className="block text-[9px] text-slate-400 uppercase mb-1 font-bold">Width</span>
+                            <div className="flex items-center border border-slate-200 rounded overflow-hidden shadow-xs bg-white">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (selectedImage === 'front') {
+                                    const currW = settings.frontImageWidth !== undefined ? settings.frontImageWidth : (frontCoverWidthPts / 72);
+                                    setSettings(p => ({ ...p, frontImageWidth: Math.max(0.2, currW - 0.1) }));
+                                  } else {
+                                    const defaultBackW = settings.binding === 'hardcover-jacket' ? (backCoverWidthPts / 72) + (settings.flapWidth || 3.25) + 0.125 : backCoverWidthPts / 72;
+                                    const currW = settings.backImageWidth !== undefined ? settings.backImageWidth : defaultBackW;
+                                    setSettings(p => ({ ...p, backImageWidth: Math.max(0.2, currW - 0.1) }));
+                                  }
+                                }}
+                                className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-600 text-xs border-r border-slate-200 font-bold cursor-pointer"
+                              >
+                                -
+                              </button>
+                              <span className="w-full text-center py-1 text-slate-900 font-bold">
+                                {(selectedImage === 'front' 
+                                  ? (settings.frontImageWidth !== undefined ? settings.frontImageWidth : (frontCoverWidthPts / 72)) 
+                                  : (settings.backImageWidth !== undefined ? settings.backImageWidth : (settings.binding === 'hardcover-jacket' ? (backCoverWidthPts / 72) + (settings.flapWidth || 3.25) + 0.125 : backCoverWidthPts / 72))
+                                ).toFixed(2)
+                                }"
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (selectedImage === 'front') {
+                                    const currW = settings.frontImageWidth !== undefined ? settings.frontImageWidth : (frontCoverWidthPts / 72);
+                                    setSettings(p => ({ ...p, frontImageWidth: currW + 0.1 }));
+                                  } else {
+                                    const defaultBackW = settings.binding === 'hardcover-jacket' ? (backCoverWidthPts / 72) + (settings.flapWidth || 3.25) + 0.125 : backCoverWidthPts / 72;
+                                    const currW = settings.backImageWidth !== undefined ? settings.backImageWidth : defaultBackW;
+                                    setSettings(p => ({ ...p, backImageWidth: currW + 0.1 }));
+                                  }
+                                }}
+                                className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-600 text-xs border-l border-slate-200 font-bold cursor-pointer"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+
+                          <div>
+                            <span className="block text-[9px] text-slate-400 uppercase mb-1 font-bold">Height</span>
+                            <div className="flex items-center border border-slate-200 rounded overflow-hidden shadow-xs bg-white">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (selectedImage === 'front') {
+                                    const currH = settings.frontImageHeight !== undefined ? settings.frontImageHeight : totalFlatHeight;
+                                    setSettings(p => ({ ...p, frontImageHeight: Math.max(0.2, currH - 0.1) }));
+                                  } else {
+                                    const currH = settings.backImageHeight !== undefined ? settings.backImageHeight : totalFlatHeight;
+                                    setSettings(p => ({ ...p, backImageHeight: Math.max(0.2, currH - 0.1) }));
+                                  }
+                                }}
+                                className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-600 text-xs border-r border-slate-200 font-bold cursor-pointer"
+                              >
+                                -
+                              </button>
+                              <span className="w-full text-center py-1 text-slate-900 font-bold">
+                                {(selectedImage === 'front' 
+                                  ? (settings.frontImageHeight !== undefined ? settings.frontImageHeight : totalFlatHeight) 
+                                  : (settings.backImageHeight !== undefined ? settings.backImageHeight : totalFlatHeight)
+                                ).toFixed(2)
+                                }"
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (selectedImage === 'front') {
+                                    const currH = settings.frontImageHeight !== undefined ? settings.frontImageHeight : totalFlatHeight;
+                                    setSettings(p => ({ ...p, frontImageHeight: currH + 0.1 }));
+                                  } else {
+                                    const currH = settings.backImageHeight !== undefined ? settings.backImageHeight : totalFlatHeight;
+                                    setSettings(p => ({ ...p, backImageHeight: currH + 0.1 }));
+                                  }
+                                }}
+                                className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-600 text-xs border-l border-slate-200 font-bold cursor-pointer"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="p-2.5 bg-indigo-50/40 rounded border border-indigo-100/30 text-[10px] text-indigo-700 leading-normal font-sans">
+                          <strong>💡 Professional Tip:</strong> You can drag the cover layout or grab any of its 8 corner handles directly on the preview to adjust alignment and size visually!
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-center text-slate-400 py-4 italic border-t border-slate-200 border-dashed text-[10px]">
+                        Click on an uploaded image directly in the preview layout to activate interactive drag and stretch handles.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {/* Cover color adjustments */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -748,10 +1425,17 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
             </div>
 
             {/* Canvas viewport */}
-            <div className="w-full max-w-full overflow-auto bg-slate-900/5 p-4 rounded-lg flex justify-center">
+            <div className="w-full max-w-full overflow-auto bg-slate-900/5 p-4 rounded-lg flex justify-center select-none">
               <canvas 
                 ref={canvasRef}
-                className="max-w-full shadow-lg border border-gray-300 rounded overflow-hidden"
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleMouseUp}
+                className="max-w-full shadow-lg border border-gray-300 rounded overflow-hidden select-none touch-none bg-slate-200"
               />
             </div>
 

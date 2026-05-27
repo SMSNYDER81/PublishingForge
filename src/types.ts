@@ -59,6 +59,17 @@ export interface CoverSettings {
   backDescription: string;
   backAuthorBio: string;
   showBarcodePlaceholder: boolean;
+
+  // Custom Image Transform settings in inches
+  frontImageX?: number;
+  frontImageY?: number;
+  frontImageWidth?: number;
+  frontImageHeight?: number;
+
+  backImageX?: number;
+  backImageY?: number;
+  backImageWidth?: number;
+  backImageHeight?: number;
 }
 
 export interface InteriorSettings {

@@ -434,12 +434,17 @@ export async function compileCoverPDF(settings: CoverSettings, coverImageBlob: B
     } else {
       embedImg = await pdfDoc.embedJpg(imgBytes);
     }
-    // Fits exact calculated front cover boundary
+    
+    const fx = settings.frontImageX !== undefined ? inchesToPts(settings.frontImageX) : 0;
+    const fy = settings.frontImageY !== undefined ? inchesToPts(settings.frontImageY) : 0;
+    const fWidth = settings.frontImageWidth !== undefined ? inchesToPts(settings.frontImageWidth) : frontCoverWidthPts;
+    const fHeight = settings.frontImageHeight !== undefined ? inchesToPts(settings.frontImageHeight) : totalHeightPts;
+
     page.drawImage(embedImg, {
-      x: frontLeftPts,
-      y: 0,
-      width: frontCoverWidthPts,
-      height: totalHeightPts,
+      x: frontLeftPts + fx,
+      y: totalHeightPts - (fy + fHeight),
+      width: fWidth,
+      height: fHeight,
     });
   }
 
@@ -450,12 +455,17 @@ export async function compileCoverPDF(settings: CoverSettings, coverImageBlob: B
       ? await pdfDoc.embedPng(imgBytes) 
       : await pdfDoc.embedJpg(imgBytes);
     
-    const backImageWidth = settings.binding === 'hardcover-jacket' ? backCoverWidthPts + flapWidthPts : backCoverWidthPts;
+    const bx = settings.backImageX !== undefined ? inchesToPts(settings.backImageX) : 0;
+    const by = settings.backImageY !== undefined ? inchesToPts(settings.backImageY) : 0;
+    const defaultBackWidth = settings.binding === 'hardcover-jacket' ? backCoverWidthPts + flapWidthPts : backCoverWidthPts;
+    const bWidth = settings.backImageWidth !== undefined ? inchesToPts(settings.backImageWidth) : defaultBackWidth;
+    const bHeight = settings.backImageHeight !== undefined ? inchesToPts(settings.backImageHeight) : totalHeightPts;
+
     page.drawImage(embedBackImg, {
-      x: 0,
-      y: 0,
-      width: backImageWidth,
-      height: totalHeightPts,
+      x: bx,
+      y: totalHeightPts - (by + bHeight),
+      width: bWidth,
+      height: bHeight,
     });
   }
 
