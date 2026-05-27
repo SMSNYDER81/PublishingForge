@@ -12,6 +12,7 @@ import {
 import { InteriorSettings, Chapter } from '../types';
 import { PLATFORMS, TRIM_SIZES, DEFAULT_BOOK_CONTENT } from '../utils/presets';
 import { typesetManuscript, compileInteriorPDF, LayoutPage } from '../utils/pdfHelpers';
+import AIAssistant from './AIAssistant';
 
 interface InteriorFormatterProps {
   onBack: () => void;
@@ -271,6 +272,26 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
         {/* LEFT COLUMN: 5/12 settings sidebar */}
         <div className="lg:col-span-5 space-y-6">
           
+          {/* AI Companion Copy & Layout Studio */}
+          <AIAssistant 
+            currentBookTitle={settings.bookTitle || ''}
+            defaultGenre="Fiction / Novel"
+            onApplyBlurb={(text) => {
+              setSettings(prev => ({
+                ...prev,
+                headerEvenText: text.slice(0, 45).toUpperCase(), // Apply a short header preview
+                bookSubtitle: text.slice(0, 60)
+              }));
+            }}
+            onApplyAesthetics={(colors) => {
+              // Apply drop cap colors or match styling theme
+              setSettings(prev => ({
+                ...prev,
+                dropCapColor: colors.spineBgColor // use recommended palette as drop cap accent color!
+              }));
+            }}
+          />
+
           {/* Draggable File Uploader */}
           <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
             <h3 className="text-sm font-mono text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">

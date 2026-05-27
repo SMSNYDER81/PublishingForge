@@ -11,6 +11,7 @@ import {
 import { CoverSettings, PlatformId, TrimSizeId, BindingType, PaperColor } from '../types';
 import { PLATFORMS, TRIM_SIZES } from '../utils/presets';
 import { calculateSpineWidth, compileCoverPDF, inchesToPts } from '../utils/pdfHelpers';
+import AIAssistant from './AIAssistant';
 
 interface CoverBuilderProps {
   onBack: () => void;
@@ -803,6 +804,32 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
         
         {/* LEFT / SETTINGS COLUMN: 5 columns */}
         <div className="lg:col-span-5 space-y-6">
+          {/* AI Creative Assistant Copy studio */}
+          <AIAssistant 
+            currentBookTitle={settings.spineTitle || ''}
+            defaultGenre="Fiction / Novel"
+            onApplyBlurb={(text) => {
+              setSettings(prev => ({
+                ...prev,
+                backDescription: text
+              }));
+            }}
+            onApplyBio={(text) => {
+              setSettings(prev => ({
+                ...prev,
+                backAuthorBio: text
+              }));
+            }}
+            onApplyAesthetics={(colors) => {
+              setSettings(prev => ({
+                ...prev,
+                spineBgColor: colors.spineBgColor,
+                backBgColor: colors.backBgColor,
+                spineTextColor: colors.spineTextColor
+              }));
+            }}
+          />
+
           <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs">
             <h2 className="text-xl font-serif font-bold text-slate-900 mb-4 flex items-center gap-2">
               <Layout className="w-5 h-5 text-indigo-600" />
