@@ -59,6 +59,8 @@ export interface CoverSettings {
   backDescription: string;
   backAuthorBio: string;
   showBarcodePlaceholder: boolean;
+  barcodeISBN?: string;
+  barcodePrice?: string;
 
   // Custom Image Transform settings in inches
   frontImageX?: number;

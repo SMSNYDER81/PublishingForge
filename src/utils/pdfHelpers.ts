@@ -6,6 +6,7 @@
 import { PDFDocument, rgb, StandardFonts, PDFFont, degrees } from 'pdf-lib';
 import { PlatformId, TrimSizeId, CoverSettings, InteriorSettings, Chapter } from '../types';
 import { PLATFORMS, TRIM_SIZES, FONTS_LIST } from './presets';
+import { getBarcodeData } from './barcodeGenerator';
 
 // Helper: convert inches to points
 export const inchesToPts = (inches: number) => inches * 72;
@@ -568,22 +569,133 @@ export async function compileCoverPDF(settings: CoverSettings, coverImageBlob: B
     // Barcode space
     if (settings.showBarcodePlaceholder) {
       const barcodeX = settings.binding === 'hardcover-jacket' ? flapWidthPts + inchesToPts(0.6) : inchesToPts(0.6);
-      page.drawRectangle({
-        x: barcodeX,
-        y: inchesToPts(0.6),
-        width: 100,
-        height: 60,
-        color: rgb(1, 1, 1),
-        borderColor: rgb(0.8, 0.8, 0.8),
-        borderWidth: 1,
-      });
-      page.drawText('ISBN BARCODE PLACEHOLDER', {
-        x: barcodeX + 5,
-        y: inchesToPts(1.0),
-        size: 6,
-        font: timesRoman,
-        color: rgb(0.4, 0.4, 0.4),
-      });
+      
+      try {
+        const bd = getBarcodeData(settings.barcodeISBN || '9781234567897', settings.barcodePrice);
+        const hasEan5 = bd.ean5Modules !== null;
+        const numModules = hasEan5 ? 151 : 95;
+
+        // Draw background white box
+        const barcodeW = hasEan5 ? 120 : 96;
+        const barcodeH = 60;
+
+        page.drawRectangle({
+          x: barcodeX,
+          y: inchesToPts(0.6),
+          width: barcodeW,
+          height: barcodeH,
+          color: rgb(1, 1, 1),
+          borderColor: rgb(0.8, 0.8, 0.8),
+          borderWidth: 1,
+        });
+
+        const padX = barcodeW * 0.05;
+        const padY = barcodeH * 0.06;
+        const drawW = barcodeW - (padX * 2);
+        const drawH = barcodeH - (padY * 2);
+        const mWidth = drawW / numModules;
+
+        const guardYEnd = inchesToPts(0.6) + padY + 8; // leaves 8pt from bottom margin for text
+        const barYEnd = inchesToPts(0.6) + padY + 12;
+
+        const topY = inchesToPts(0.6) + padY + drawH;
+
+        // Draw EAN13 bars
+        for (let i = 0; i < bd.ean13Modules.length; i++) {
+          if (bd.ean13Modules.charAt(i) === '1') {
+            const isGuard = i < 3 || (i >= 45 && i < 50) || i >= 92;
+            const barEndY = isGuard ? guardYEnd : barYEnd;
+            page.drawRectangle({
+              x: barcodeX + padX + i * mWidth,
+              y: barEndY,
+              width: mWidth,
+              height: topY - barEndY,
+              color: rgb(0, 0, 0),
+            });
+          }
+        }
+
+        // Draw EAN5 bars
+        if (hasEan5 && bd.ean5Modules) {
+          const ean5StartX = barcodeX + padX + (95 + 9) * mWidth;
+          for (let i = 0; i < bd.ean5Modules.length; i++) {
+            if (bd.ean5Modules.charAt(i) === '1') {
+              page.drawRectangle({
+                x: ean5StartX + i * mWidth,
+                y: barYEnd,
+                width: mWidth,
+                height: topY - barYEnd,
+                color: rgb(0, 0, 0),
+              });
+            }
+          }
+        }
+
+        const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+        const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+        // Draw numbers
+        const textY = inchesToPts(0.6) + 2; // draw text at bottom
+
+        // Main first digit (usually 9)
+        page.drawText(bd.ean13Text.charAt(0), {
+          x: barcodeX + padX - 5,
+          y: textY,
+          size: 6,
+          font: fontBold,
+          color: rgb(0, 0, 0)
+        });
+
+        // Left 6 digits
+        const leftGroupStr = bd.ean13Text.substring(2, 8).replace(/-/g, '');
+        page.drawText(leftGroupStr, {
+          x: barcodeX + padX + 4,
+          y: textY,
+          size: 6,
+          font: fontBold,
+          color: rgb(0, 0, 0)
+        });
+
+        // Right 6 digits
+        const rightGroupStr = bd.ean13Text.substring(8).replace(/-/g, '');
+        page.drawText(rightGroupStr, {
+          x: barcodeX + padX + 35,
+          y: textY,
+          size: 6,
+          font: fontBold,
+          color: rgb(0, 0, 0)
+        });
+
+        // Top ISBN text
+        page.drawText("ISBN " + bd.ean13Text, {
+          x: barcodeX + padX + 8,
+          y: inchesToPts(0.6) + barcodeH - 5,
+          size: 5.5,
+          font: fontRegular,
+          color: rgb(0, 0, 0)
+        });
+
+        // Draw EAN5 text if present
+        if (hasEan5 && bd.ean5Text) {
+          const ean5StartX = barcodeX + padX + (95 + 9) * mWidth;
+          page.drawText(bd.ean5Text, {
+            x: ean5StartX,
+            y: inchesToPts(0.6) + barcodeH - 5,
+            size: 5,
+            font: fontBold,
+            color: rgb(0, 0, 0)
+          });
+        }
+      } catch (err) {
+        console.error("Vector barcode rendering error:", err);
+        page.drawText('ISBN BARCODE ERROR', {
+          x: barcodeX + 5,
+          y: inchesToPts(0.6) + 25,
+          size: 6,
+          font: timesRoman,
+          color: rgb(0.5, 0.1, 0.1),
+        });
+      }
     }
   }
 

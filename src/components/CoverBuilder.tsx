@@ -12,6 +12,7 @@ import { CoverSettings, PlatformId, TrimSizeId, BindingType, PaperColor } from '
 import { PLATFORMS, TRIM_SIZES } from '../utils/presets';
 import { calculateSpineWidth, compileCoverPDF, inchesToPts } from '../utils/pdfHelpers';
 import AIAssistant from './AIAssistant';
+import { drawBarcodeToCanvas } from '../utils/barcodeGenerator';
 
 interface CoverBuilderProps {
   onBack: () => void;
@@ -41,7 +42,9 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
     backTextColor: '#cbd5e1',
     backDescription: 'A gripping journey through the furnaces of the post-Scarcity world. Where word smithing and metal forging collide to preserve humanity’s oldest languages.',
     backAuthorBio: 'D. Scribe is an expert archivist from the Border Spires.',
-    showBarcodePlaceholder: true
+    showBarcodePlaceholder: true,
+    barcodeISBN: '9781234567897',
+    barcodePrice: '19.99'
   });
 
   const [showGuides, setShowGuides] = useState<boolean>(true);
@@ -655,15 +658,19 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
       // Barcode space
       if (settings.showBarcodePlaceholder && !backImgUrl) {
         const barcodeX = (settings.binding === 'hardcover-jacket' ? flapWidthScale : 0) + 24;
-        ctx.fillStyle = '#ffffff';
-        ctx.strokeStyle = '#cbd5e1';
-        ctx.fillRect(barcodeX, drawHeight - 65, 80, 45);
-        ctx.strokeRect(barcodeX, drawHeight - 65, 80, 45);
-        ctx.fillStyle = '#64748b';
-        ctx.font = '7px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('ISBN BARCODE', barcodeX + 40, drawHeight - 45);
-        ctx.fillText('PLACEHOLDER', barcodeX + 40, drawHeight - 35);
+        const hasEan5 = !!settings.barcodePrice;
+        const barcodeWidth = hasEan5 ? 110 : 90;
+        const barcodeHeight = 55;
+        
+        drawBarcodeToCanvas(
+          ctx,
+          barcodeX,
+          drawHeight - barcodeHeight - 20,
+          barcodeWidth,
+          barcodeHeight,
+          settings.barcodeISBN || '9781234567897',
+          settings.barcodePrice
+        );
       }
 
       // Render spine text rotated
@@ -1319,16 +1326,50 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
                   />
                 </div>
 
-                {/* Options */}
-                <div className="flex items-center gap-2">
-                  <input 
-                    type="checkbox" 
-                    id="barcode-checkbox"
-                    checked={settings.showBarcodePlaceholder} 
-                    onChange={(e) => setSettings(p => ({ ...p, showBarcodePlaceholder: e.target.checked }))}
-                    className="accent-indigo-600"
-                  />
-                  <label htmlFor="barcode-checkbox" className="text-xs text-slate-600 font-bold">RESERVE WHITE BOX FOR ISBN BARCODE</label>
+                {/* Options & Live Barcode Generator */}
+                <div id="barcode-controls-block" className="space-y-3 pt-3 border-t border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="checkbox" 
+                      id="barcode-checkbox"
+                      checked={settings.showBarcodePlaceholder} 
+                      onChange={(e) => setSettings(p => ({ ...p, showBarcodePlaceholder: e.target.checked }))}
+                      className="accent-indigo-600"
+                    />
+                    <label htmlFor="barcode-checkbox" className="text-xs text-slate-700 font-bold uppercase tracking-wider cursor-pointer">
+                      GENERATE ISBN &amp; PRICE BARCODE
+                    </label>
+                  </div>
+
+                  {settings.showBarcodePlaceholder && (
+                    <div className="p-3.5 bg-indigo-50/30 border border-indigo-100/50 rounded-lg space-y-3 animate-fadeIn">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[9px] text-slate-400 font-bold mb-1 uppercase tracking-wider">ISBN Number (10 or 13)</label>
+                          <input 
+                            type="text"
+                            value={settings.barcodeISBN || ''}
+                            onChange={(e) => setSettings(p => ({ ...p, barcodeISBN: e.target.value }))}
+                            placeholder="e.g. 9781234567897"
+                            className="w-full bg-white border border-slate-200 rounded p-1.5 font-bold font-mono text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] text-slate-400 font-bold mb-1 uppercase tracking-wider">Price USD ($)</label>
+                          <input 
+                            type="text"
+                            value={settings.barcodePrice || ''}
+                            onChange={(e) => setSettings(p => ({ ...p, barcodePrice: e.target.value }))}
+                            placeholder="e.g. 19.99 (EAN-5 code)"
+                            className="w-full bg-white border border-slate-200 rounded p-1.5 font-bold font-mono text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-slate-500 leading-relaxed font-sans">
+                        Any 10-digit ISBN is upgraded to ISBN-13. An optional EAN-5 price addon will auto-append to standard publishing specs if a USD price is specified.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
