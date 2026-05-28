@@ -6,7 +6,7 @@
 import { BookOpen, Palette, HelpCircle, ShieldCheck, Heart, Award } from 'lucide-react';
 
 interface HomeHeroProps {
-  onSelectTool: (tool: 'cover' | 'interior') => void;
+  onSelectTool: (tool: 'cover' | 'interior' | 'blog') => void;
   onOpenGuides: () => void;
 }
 
@@ -131,12 +131,19 @@ export default function HomeHero({ onSelectTool, onOpenGuides }: HomeHeroProps) 
             <p className="text-sm text-slate-600 mt-2 leading-relaxed">
               Unlike online cloud templates that lock down formatting elements or charge subscription fees, **PublishingForge** works 100% locally on your computer’s browser. Your private intellectual property is never sent to a backend server.
             </p>
-            <div className="mt-4 flex flex-wrap gap-3">
+            <div className="mt-4 flex flex-wrap gap-4 items-center">
               <button 
                 onClick={onOpenGuides}
-                className="text-xs font-mono font-semibold text-indigo-600 hover:text-indigo-850 hover:underline"
+                className="text-xs font-mono font-semibold text-slate-600 hover:text-slate-800 hover:underline"
               >
                 Read Publishing Guidelines &amp; Core Constraints &rarr;
+              </button>
+              <span className="text-slate-300 hidden sm:inline">|</span>
+              <button 
+                onClick={() => onSelectTool('blog')}
+                className="text-xs font-mono font-bold text-indigo-600 hover:text-indigo-850 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/60 px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition-colors"
+              >
+                Explore SEO Rich Blog &amp; Search Mockups &rarr;
               </button>
             </div>
           </div>

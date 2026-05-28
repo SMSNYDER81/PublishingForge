@@ -8,9 +8,10 @@ import HomeHero from './components/HomeHero';
 import CoverBuilder from './components/CoverBuilder';
 import InteriorFormatter from './components/InteriorFormatter';
 import ManualOrGuideline from './components/ManualOrGuideline';
+import BlogSection from './components/BlogSection';
 import { Sparkles, HelpCircle, FileText, ChevronRight } from 'lucide-react';
 
-type ScreenId = 'home' | 'cover' | 'interior';
+type ScreenId = 'home' | 'cover' | 'interior' | 'blog';
 
 export default function App() {
   const [screen, setScreen] = useState<ScreenId>('home');
@@ -50,6 +51,13 @@ export default function App() {
           </button>
           <span className="text-slate-700">|</span>
           <button 
+            onClick={() => setScreen('blog')}
+            className={`transition-colors hover:text-indigo-400 ${screen === 'blog' ? 'text-indigo-400 font-extrabold underline decoration-2 underline-offset-4' : ''}`}
+          >
+            SEO Blog &amp; Simulator
+          </button>
+          <span className="text-slate-700">|</span>
+          <button 
             onClick={() => setShowGuides(true)}
             className="flex items-center gap-1 bg-indigo-500/10 hover:bg-indigo-500/25 text-indigo-400 px-2.5 py-1 rounded border border-indigo-500/20"
           >
@@ -85,6 +93,10 @@ export default function App() {
 
         {screen === 'interior' && (
           <InteriorFormatter onBack={() => setScreen('home')} />
+        )}
+
+        {screen === 'blog' && (
+          <BlogSection />
         )}
       </main>
 
