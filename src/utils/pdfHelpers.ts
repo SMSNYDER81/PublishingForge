@@ -382,11 +382,12 @@ export async function fetchFontAsUint8(url: string): Promise<Uint8Array> {
   const arrayBuffer = await resp.arrayBuffer();
   return new Uint8Array(arrayBuffer);
 }
-
-/**
- * Generates the full high-fidelity composite cover wrapping Mode A or Mode B to printable PDF
- */
-export async function compileCoverPDF(settings: CoverSettings, coverImageBlob: Blob | null, backImageBlob: Blob | null): Promise<Blob> {
+export async function compileCoverPDF(
+  settings: CoverSettings, 
+  coverImageBlob: Blob | null, 
+  backImageBlob: Blob | null,
+  fullWrapBlob?: Blob | null
+): Promise<Blob> {
   const pdfDoc = await PDFDocument.create();
   
   const trimSize = TRIM_SIZES.find(t => t.id === settings.trimId) || TRIM_SIZES[3];
@@ -446,11 +447,8 @@ export async function compileCoverPDF(settings: CoverSettings, coverImageBlob: B
 
   const page = pdfDoc.addPage([totalWidthPts, totalHeightPts]);
 
-  // 1. Draw solid background panels across the computed boundaries (Mode A)
-  const spineBg = hexToColorVec(settings.spineBgColor);
-  const backBg = hexToColorVec(settings.backBgColor);
-  
   // Fill background
+  const backBg = hexToColorVec(settings.backBgColor);
   page.drawRectangle({
     x: 0,
     y: 0,
@@ -459,91 +457,90 @@ export async function compileCoverPDF(settings: CoverSettings, coverImageBlob: B
     color: backBg,
   });
 
-  // Specifically paint spine
-  page.drawRectangle({
-    x: spineLeftPts,
-    y: 0,
-    width: spineWidthPts,
-    height: totalHeightPts,
-    color: spineBg,
-  });
-
-  // Embedded image processing for front cover
-  if (coverImageBlob) {
-    const imgBytes = await coverImageBlob.arrayBuffer();
-    let embedImg;
-    if (coverImageBlob.type === 'image/png') {
-      embedImg = await pdfDoc.embedPng(imgBytes);
-    } else {
-      embedImg = await pdfDoc.embedJpg(imgBytes);
-    }
-    
-    const fx = settings.frontImageX !== undefined ? inchesToPts(settings.frontImageX) : 0;
-    const fy = settings.frontImageY !== undefined ? inchesToPts(settings.frontImageY) : 0;
-    const fWidth = settings.frontImageWidth !== undefined ? inchesToPts(settings.frontImageWidth) : frontCoverWidthPts;
-    const fHeight = settings.frontImageHeight !== undefined ? inchesToPts(settings.frontImageHeight) : totalHeightPts;
-
-    page.drawImage(embedImg, {
-      x: frontLeftPts + fx,
-      y: totalHeightPts - (fy + fHeight),
-      width: fWidth,
-      height: fHeight,
-    });
-  }
-
-  // Embedded optional back cover image
-  if (backImageBlob) {
-    const imgBytes = await backImageBlob.arrayBuffer();
-    const embedBackImg = backImageBlob.type === 'image/png' 
-      ? await pdfDoc.embedPng(imgBytes) 
-      : await pdfDoc.embedJpg(imgBytes);
-    
-    const bx = settings.backImageX !== undefined ? inchesToPts(settings.backImageX) : 0;
-    const by = settings.backImageY !== undefined ? inchesToPts(settings.backImageY) : 0;
-    const defaultBackWidth = settings.binding === 'hardcover-jacket' ? backCoverWidthPts + flapWidthPts : backCoverWidthPts;
-    const bWidth = settings.backImageWidth !== undefined ? inchesToPts(settings.backImageWidth) : defaultBackWidth;
-    const bHeight = settings.backImageHeight !== undefined ? inchesToPts(settings.backImageHeight) : totalHeightPts;
-
-    page.drawImage(embedBackImg, {
-      x: bx,
-      y: totalHeightPts - (by + bHeight),
-      width: bWidth,
-      height: bHeight,
-    });
-  }
-
-  // Draw spine text (Rotate 270 degrees clockwise or 90 degrees counter-clockwise)
-  if (settings.spineTitle && spineWidth >= 0.25) {
-    const font = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
-    const titleText = settings.spineTitle.toUpperCase();
-    const authorText = settings.spineAuthor ? ` — ${settings.spineAuthor}` : '';
-    const fullText = sanitizeForWinAnsi(titleText + authorText);
-
-    // Center along vertical height
-    const spineClientFontSize = settings.spineFontSize || 10;
-    const textWidth = font.widthOfTextAtSize(fullText, spineClientFontSize);
-    const startY = (totalHeightPts + textWidth) / 2; // Center centered
-    const startX = spineLeftPts + (spineWidthPts / 2) - (spineClientFontSize * 0.35); // Center aligned spine
-
-    page.drawText(fullText, {
-      x: startX,
-      y: startY,
-      size: spineClientFontSize,
-      font: font,
-      color: hexToColorVec(settings.spineTextColor),
-      rotate: degrees(-90), // Rotated spine text
-    });
-  }
-
-  // Draw back cover details if in custom front mode
   if (settings.mode === 'front') {
-    const timesRoman = await pdfDoc.embedFont(StandardFonts.TimesRoman);
-    const textColor = hexToColorVec(settings.backTextColor);
+    // Specifically paint spine
+    const spineBg = hexToColorVec(settings.spineBgColor);
+    page.drawRectangle({
+      x: spineLeftPts,
+      y: 0,
+      width: spineWidthPts,
+      height: totalHeightPts,
+      color: spineBg,
+    });
 
-    const backCoverContentStartX = settings.binding === 'hardcover-jacket' ? flapWidthPts + inchesToPts(0.6) : inchesToPts(0.6);
+    // Embedded image processing for front cover
+    if (coverImageBlob) {
+      const imgBytes = await coverImageBlob.arrayBuffer();
+      let embedImg;
+      if (coverImageBlob.type === 'image/png') {
+        embedImg = await pdfDoc.embedPng(imgBytes);
+      } else {
+        embedImg = await pdfDoc.embedJpg(imgBytes);
+      }
+      
+      const fx = settings.frontImageX !== undefined ? inchesToPts(settings.frontImageX) : 0;
+      const fy = settings.frontImageY !== undefined ? inchesToPts(settings.frontImageY) : 0;
+      const fWidth = settings.frontImageWidth !== undefined ? inchesToPts(settings.frontImageWidth) : frontCoverWidthPts;
+      const fHeight = settings.frontImageHeight !== undefined ? inchesToPts(settings.frontImageHeight) : totalHeightPts;
+
+      page.drawImage(embedImg, {
+        x: frontLeftPts + fx,
+        y: totalHeightPts - (fy + fHeight),
+        width: fWidth,
+        height: fHeight,
+      });
+    }
+
+    // Embedded optional back cover image
+    if (backImageBlob) {
+      const imgBytes = await backImageBlob.arrayBuffer();
+      const embedBackImg = backImageBlob.type === 'image/png' 
+        ? await pdfDoc.embedPng(imgBytes) 
+        : await pdfDoc.embedJpg(imgBytes);
+      
+      const bx = settings.backImageX !== undefined ? inchesToPts(settings.backImageX) : 0;
+      const by = settings.backImageY !== undefined ? inchesToPts(settings.backImageY) : 0;
+      const defaultBackWidth = settings.binding === 'hardcover-jacket' ? backCoverWidthPts + flapWidthPts : backCoverWidthPts;
+      const bWidth = settings.backImageWidth !== undefined ? inchesToPts(settings.backImageWidth) : defaultBackWidth;
+      const bHeight = settings.backImageHeight !== undefined ? inchesToPts(settings.backImageHeight) : totalHeightPts;
+
+      page.drawImage(embedBackImg, {
+        x: bx,
+        y: totalHeightPts - (by + bHeight),
+        width: bWidth,
+        height: bHeight,
+      });
+    }
+
+    // Draw spine text (Rotate 270 degrees clockwise or 90 degrees counter-clockwise)
+    if (settings.spineTitle && spineWidth >= 0.25) {
+      const font = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
+      const titleText = settings.spineTitle.toUpperCase();
+      const authorText = settings.spineAuthor ? ` — ${settings.spineAuthor}` : '';
+      const fullText = sanitizeForWinAnsi(titleText + authorText);
+
+      // Center along vertical height
+      const spineClientFontSize = settings.spineFontSize || 10;
+      const textWidth = font.widthOfTextAtSize(fullText, spineClientFontSize);
+      const startY = (totalHeightPts + textWidth) / 2; // Center centered
+      const startX = spineLeftPts + (spineWidthPts / 2) - (spineClientFontSize * 0.35); // Center aligned spine
+
+      page.drawText(fullText, {
+        x: startX,
+        y: startY,
+        size: spineClientFontSize,
+        font: font,
+        color: hexToColorVec(settings.spineTextColor),
+        rotate: degrees(-90), // Rotated spine text
+      });
+    }
 
     // Draw description synopsis
     if (settings.backDescription) {
+      const timesRoman = await pdfDoc.embedFont(StandardFonts.TimesRoman);
+      const textColor = hexToColorVec(settings.backTextColor);
+      const backCoverContentStartX = settings.binding === 'hardcover-jacket' ? flapWidthPts + inchesToPts(0.6) : inchesToPts(0.6);
+
       const sanitizedBackDesc = sanitizeForWinAnsi(settings.backDescription);
       const synWords = sanitizedBackDesc.split(' ');
       let currentLine = '';
@@ -565,137 +562,151 @@ export async function compileCoverPDF(settings: CoverSettings, coverImageBlob: B
         page.drawText(currentLine, { x: startX, y: yOffset, size: 10, font: timesRoman, color: textColor });
       }
     }
+  } else if (settings.mode === 'full' && fullWrapBlob) {
+    // Embedded image processing for full precomposed wrap spread
+    const imgBytes = await fullWrapBlob.arrayBuffer();
+    const embedFullImg = fullWrapBlob.type === 'image/png' 
+      ? await pdfDoc.embedPng(imgBytes) 
+      : await pdfDoc.embedJpg(imgBytes);
 
-    // Barcode space
-    if (settings.showBarcodePlaceholder) {
-      const barcodeX = settings.binding === 'hardcover-jacket' ? flapWidthPts + inchesToPts(0.6) : inchesToPts(0.6);
-      
-      try {
-        const bd = getBarcodeData(settings.barcodeISBN || '9781234567897', settings.barcodePrice);
-        const hasEan5 = bd.ean5Modules !== null;
-        const numModules = hasEan5 ? 151 : 95;
+    page.drawImage(embedFullImg, {
+      x: 0,
+      y: 0,
+      width: totalWidthPts,
+      height: totalHeightPts,
+    });
+  }
 
-        // Draw background white box
-        const barcodeW = hasEan5 ? 120 : 96;
-        const barcodeH = 60;
+  // Draw barcode space (Common to both modes)
+  if (settings.showBarcodePlaceholder) {
+    const barcodeX = settings.binding === 'hardcover-jacket' ? flapWidthPts + inchesToPts(0.6) : inchesToPts(0.6);
+    
+    try {
+      const bd = getBarcodeData(settings.barcodeISBN || '9781234567897', settings.barcodePrice);
+      const hasEan5 = bd.ean5Modules !== null;
+      const numModules = hasEan5 ? 151 : 95;
 
-        page.drawRectangle({
-          x: barcodeX,
-          y: inchesToPts(0.6),
-          width: barcodeW,
-          height: barcodeH,
-          color: rgb(1, 1, 1),
-          borderColor: rgb(0.8, 0.8, 0.8),
-          borderWidth: 1,
-        });
+      // Draw background white box
+      const barcodeW = hasEan5 ? 120 : 96;
+      const barcodeH = 60;
 
-        const padX = barcodeW * 0.05;
-        const padY = barcodeH * 0.06;
-        const drawW = barcodeW - (padX * 2);
-        const drawH = barcodeH - (padY * 2);
-        const mWidth = drawW / numModules;
+      page.drawRectangle({
+        x: barcodeX,
+        y: inchesToPts(0.6),
+        width: barcodeW,
+        height: barcodeH,
+        color: rgb(1, 1, 1),
+        borderColor: rgb(0.8, 0.8, 0.8),
+        borderWidth: 1,
+      });
 
-        const guardYEnd = inchesToPts(0.6) + padY + 8; // leaves 8pt from bottom margin for text
-        const barYEnd = inchesToPts(0.6) + padY + 12;
+      const padX = barcodeW * 0.05;
+      const padY = barcodeH * 0.06;
+      const drawW = barcodeW - (padX * 2);
+      const drawH = barcodeH - (padY * 2);
+      const mWidth = drawW / numModules;
 
-        const topY = inchesToPts(0.6) + padY + drawH;
+      const guardYEnd = inchesToPts(0.6) + padY + 8; // leaves 8pt from bottom margin for text
+      const barYEnd = inchesToPts(0.6) + padY + 12;
 
-        // Draw EAN13 bars
-        for (let i = 0; i < bd.ean13Modules.length; i++) {
-          if (bd.ean13Modules.charAt(i) === '1') {
-            const isGuard = i < 3 || (i >= 45 && i < 50) || i >= 92;
-            const barEndY = isGuard ? guardYEnd : barYEnd;
+      const topY = inchesToPts(0.6) + padY + drawH;
+
+      // Draw EAN13 bars
+      for (let i = 0; i < bd.ean13Modules.length; i++) {
+        if (bd.ean13Modules.charAt(i) === '1') {
+          const isGuard = i < 3 || (i >= 45 && i < 50) || i >= 92;
+          const barEndY = isGuard ? guardYEnd : barYEnd;
+          page.drawRectangle({
+            x: barcodeX + padX + i * mWidth,
+            y: barEndY,
+            width: mWidth,
+            height: topY - barEndY,
+            color: rgb(0, 0, 0),
+          });
+        }
+      }
+
+      // Draw EAN5 bars
+      if (hasEan5 && bd.ean5Modules) {
+        const ean5StartX = barcodeX + padX + (95 + 9) * mWidth;
+        for (let i = 0; i < bd.ean5Modules.length; i++) {
+          if (bd.ean5Modules.charAt(i) === '1') {
             page.drawRectangle({
-              x: barcodeX + padX + i * mWidth,
-              y: barEndY,
+              x: ean5StartX + i * mWidth,
+              y: barYEnd,
               width: mWidth,
-              height: topY - barEndY,
+              height: topY - barYEnd,
               color: rgb(0, 0, 0),
             });
           }
         }
+      }
 
-        // Draw EAN5 bars
-        if (hasEan5 && bd.ean5Modules) {
-          const ean5StartX = barcodeX + padX + (95 + 9) * mWidth;
-          for (let i = 0; i < bd.ean5Modules.length; i++) {
-            if (bd.ean5Modules.charAt(i) === '1') {
-              page.drawRectangle({
-                x: ean5StartX + i * mWidth,
-                y: barYEnd,
-                width: mWidth,
-                height: topY - barYEnd,
-                color: rgb(0, 0, 0),
-              });
-            }
-          }
-        }
+      const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+      const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-        const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-        const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      // Draw numbers
+      const textY = inchesToPts(0.6) + 2; // draw text at bottom
 
-        // Draw numbers
-        const textY = inchesToPts(0.6) + 2; // draw text at bottom
+      // Main first digit (usually 9)
+      page.drawText(bd.ean13Text.charAt(0), {
+        x: barcodeX + padX - 5,
+        y: textY,
+        size: 6,
+        font: fontBold,
+        color: rgb(0, 0, 0)
+      });
 
-        // Main first digit (usually 9)
-        page.drawText(bd.ean13Text.charAt(0), {
-          x: barcodeX + padX - 5,
-          y: textY,
-          size: 6,
-          font: fontBold,
-          color: rgb(0, 0, 0)
-        });
+      // Left 6 digits
+      const leftGroupStr = bd.ean13Text.substring(2, 8).replace(/-/g, '');
+      page.drawText(leftGroupStr, {
+        x: barcodeX + padX + 4,
+        y: textY,
+        size: 6,
+        font: fontBold,
+        color: rgb(0, 0, 0)
+      });
 
-        // Left 6 digits
-        const leftGroupStr = bd.ean13Text.substring(2, 8).replace(/-/g, '');
-        page.drawText(leftGroupStr, {
-          x: barcodeX + padX + 4,
-          y: textY,
-          size: 6,
-          font: fontBold,
-          color: rgb(0, 0, 0)
-        });
+      // Right 6 digits
+      const rightGroupStr = bd.ean13Text.substring(8).replace(/-/g, '');
+      page.drawText(rightGroupStr, {
+        x: barcodeX + padX + 35,
+        y: textY,
+        size: 6,
+        font: fontBold,
+        color: rgb(0, 0, 0)
+      });
 
-        // Right 6 digits
-        const rightGroupStr = bd.ean13Text.substring(8).replace(/-/g, '');
-        page.drawText(rightGroupStr, {
-          x: barcodeX + padX + 35,
-          y: textY,
-          size: 6,
-          font: fontBold,
-          color: rgb(0, 0, 0)
-        });
+      // Top ISBN text
+      page.drawText("ISBN " + bd.ean13Text, {
+        x: barcodeX + padX + 8,
+        y: inchesToPts(0.6) + barcodeH - 5,
+        size: 5.5,
+        font: fontRegular,
+        color: rgb(0, 0, 0)
+      });
 
-        // Top ISBN text
-        page.drawText("ISBN " + bd.ean13Text, {
-          x: barcodeX + padX + 8,
+      // Draw EAN5 text if present
+      if (hasEan5 && bd.ean5Text) {
+        const ean5StartX = barcodeX + padX + (95 + 9) * mWidth;
+        page.drawText(bd.ean5Text, {
+          x: ean5StartX,
           y: inchesToPts(0.6) + barcodeH - 5,
-          size: 5.5,
-          font: fontRegular,
+          size: 5,
+          font: fontBold,
           color: rgb(0, 0, 0)
-        });
-
-        // Draw EAN5 text if present
-        if (hasEan5 && bd.ean5Text) {
-          const ean5StartX = barcodeX + padX + (95 + 9) * mWidth;
-          page.drawText(bd.ean5Text, {
-            x: ean5StartX,
-            y: inchesToPts(0.6) + barcodeH - 5,
-            size: 5,
-            font: fontBold,
-            color: rgb(0, 0, 0)
-          });
-        }
-      } catch (err) {
-        console.error("Vector barcode rendering error:", err);
-        page.drawText('ISBN BARCODE ERROR', {
-          x: barcodeX + 5,
-          y: inchesToPts(0.6) + 25,
-          size: 6,
-          font: timesRoman,
-          color: rgb(0.5, 0.1, 0.1),
         });
       }
+    } catch (err) {
+      console.error("Vector barcode rendering error:", err);
+      const fallbackFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      page.drawText('ISBN BARCODE ERROR', {
+        x: barcodeX + 5,
+        y: inchesToPts(0.6) + 25,
+        size: 6,
+        font: fallbackFont,
+        color: rgb(0.5, 0.1, 0.1),
+      });
     }
   }
 

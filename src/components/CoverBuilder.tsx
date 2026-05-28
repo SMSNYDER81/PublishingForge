@@ -68,8 +68,10 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
   // Web-Safe preloaded images references to bypass browser download flicker
   const [frontImgLoaded, setFrontImgLoaded] = useState<boolean>(false);
   const [backImgLoaded, setBackImgLoaded] = useState<boolean>(false);
+  const [fullWrapImgLoaded, setFullWrapImgLoaded] = useState<boolean>(false);
   const frontImgRef = useRef<HTMLImageElement | null>(null);
   const backImgRef = useRef<HTMLImageElement | null>(null);
+  const fullWrapImgRef = useRef<HTMLImageElement | null>(null);
 
   useEffect(() => {
     if (frontImgUrl) {
@@ -96,6 +98,20 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
       backImgRef.current = null;
     }
   }, [backImgUrl]);
+
+  const [fullWrapImgUrl, setFullWrapImgUrl] = useState<string>('');
+  useEffect(() => {
+    if (fullWrapImgUrl) {
+      const img = new Image();
+      img.src = fullWrapImgUrl;
+      img.onload = () => {
+        fullWrapImgRef.current = img;
+        setFullWrapImgLoaded(prev => !prev); // toggle trigger redraw
+      };
+    } else {
+      fullWrapImgRef.current = null;
+    }
+  }, [fullWrapImgUrl]);
 
   // Convert current physical specifications and custom layout transforms to coordinate pixels
   const getImageBounds = (scale: number) => {
@@ -523,8 +539,10 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
     const file = e.target.files?.[0];
     if (file) {
       setFullWrapBlob(file);
+      const url = URL.createObjectURL(file);
+      setFullWrapImgUrl(url);
       const img = new Image();
-      img.src = URL.createObjectURL(file);
+      img.src = url;
       img.onload = () => {
         setFullWrapWidthPx(img.width);
         setFullWrapHeightPx(img.height);
@@ -600,28 +618,42 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
       ? spineStartX + spineWidthScale
       : (settings.binding === 'hardcover-case' ? spineStartX + spineWidthScale + 0.375 * scale : spineStartX + spineWidthScale);
 
-    ctx.fillStyle = settings.backBgColor;
-    ctx.fillRect(0, 0, drawWidth, drawHeight);
-
-    ctx.fillStyle = settings.spineBgColor;
-    ctx.fillRect(spineStartX, 0, spineWidthScale, drawHeight);
-
     const bounds = getImageBounds(scale);
 
-    // Draw back image if uploaded and loaded
-    if (backImgUrl && backImgRef.current) {
-      ctx.drawImage(backImgRef.current, bounds.back.x, bounds.back.y, bounds.back.w, bounds.back.h);
-    }
+    if (settings.mode === 'full') {
+      if (fullWrapImgUrl && fullWrapImgRef.current) {
+        ctx.drawImage(fullWrapImgRef.current, 0, 0, drawWidth, drawHeight);
+      } else {
+        ctx.fillStyle = settings.backBgColor;
+        ctx.fillRect(0, 0, drawWidth, drawHeight);
 
-    // Draw uploaded front image on front cover if uploaded and loaded
-    if (frontImgUrl && frontImgRef.current) {
-      ctx.drawImage(frontImgRef.current, bounds.front.x, bounds.front.y, bounds.front.w, bounds.front.h);
-    } else if (!frontImgUrl) {
-      // Draw placeholder front text
-      ctx.fillStyle = '#64748b';
-      ctx.font = 'italic 15px serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('[ Front Cover Art Placeholder ]', frontStartX + (frontCoverWidthScale / 2), drawHeight / 2);
+        ctx.fillStyle = '#64748b';
+        ctx.font = 'italic 15px serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('[ Full Wrap Spread Artwork Placeholder ]', drawWidth / 2, drawHeight / 2);
+      }
+    } else {
+      ctx.fillStyle = settings.backBgColor;
+      ctx.fillRect(0, 0, drawWidth, drawHeight);
+
+      ctx.fillStyle = settings.spineBgColor;
+      ctx.fillRect(spineStartX, 0, spineWidthScale, drawHeight);
+
+      // Draw back image if uploaded and loaded
+      if (backImgUrl && backImgRef.current) {
+        ctx.drawImage(backImgRef.current, bounds.back.x, bounds.back.y, bounds.back.w, bounds.back.h);
+      }
+
+      // Draw uploaded front image on front cover if uploaded and loaded
+      if (frontImgUrl && frontImgRef.current) {
+        ctx.drawImage(frontImgRef.current, bounds.front.x, bounds.front.y, bounds.front.w, bounds.front.h);
+      } else if (!frontImgUrl) {
+        // Draw placeholder front text
+        ctx.fillStyle = '#64748b';
+        ctx.font = 'italic 15px serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('[ Front Cover Art Placeholder ]', frontStartX + (frontCoverWidthScale / 2), drawHeight / 2);
+      }
     }
 
     // Draw boundaries guides, secondary overlays, spine rotated text
@@ -656,7 +688,7 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
       }
 
       // Barcode space
-      if (settings.showBarcodePlaceholder && !backImgUrl) {
+      if (settings.showBarcodePlaceholder) {
         const barcodeX = (settings.binding === 'hardcover-jacket' ? flapWidthScale : 0) + 24;
         const hasEan5 = !!settings.barcodePrice;
         const barcodeWidth = hasEan5 ? 110 : 90;
@@ -770,14 +802,14 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
     }
   }, [
     settings, totalFlatWidth, totalFlatHeight, showGuides, frontImgUrl, backImgUrl,
-    frontImgLoaded, backImgLoaded, selectedImage
+    frontImgLoaded, backImgLoaded, selectedImage, fullWrapImgUrl, fullWrapImgLoaded
   ]);
 
   // Handle Cover Downloading
   const triggerDownloadCover = async () => {
     setIsCompiling(true);
     try {
-      const pdfBlob = await compileCoverPDF(settings, frontImage, backImage);
+      const pdfBlob = await compileCoverPDF(settings, frontImage, backImage, fullWrapBlob);
       const url = URL.createObjectURL(pdfBlob);
       const link = document.createElement('a');
       link.href = url;
