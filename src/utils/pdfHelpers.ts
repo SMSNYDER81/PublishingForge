@@ -66,7 +66,7 @@ export function getDropCapOffset(char: string, fontSize: number, numLines: numbe
   else if (charUpper === 'I') relWidth = 333;
 
   const exactWidth = dcFontSize * (relWidth / 1000);
-  return Math.ceil(exactWidth + 4);
+  return Math.ceil(exactWidth + 1.5);
 }
 
 // Helper: convert hex string to rgb color vector

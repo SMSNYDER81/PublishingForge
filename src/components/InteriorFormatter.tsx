@@ -926,6 +926,12 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
               const renderPageCard = (pData: LayoutPage, side: 'left' | 'right' | 'single') => {
                 const isOdd = pData.pageNumber % 2 !== 0;
                 
+                // Dynamic page dimension scaling factor to map points accurately to the 320px screen representation
+                const trimPreset = TRIM_SIZES.find(t => t.id === settings.trimId);
+                const trimWidth = settings.trimId === 'custom' ? settings.customWidth : (trimPreset?.width || 5.5);
+                const widthPts = trimWidth * 72;
+                const previewScale = 320 / widthPts;
+
                 // Gutter binding dynamic offsets inside vs outside margins
                 const useLeftPadding = (side === 'left') 
                   ? `${Math.max(20, settings.outsideMargin * 40)}px`
@@ -1034,21 +1040,28 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
                           const dropCapLines = line.dropCapLinesCount || 3;
                           const accentColor = line.dropCapColor || '#4f46e5';
 
+                          // Calculate dynamic padding on screen using scaled dropCapOffset directly
+                          const rawPadding = line.dropCapOffset ? (line.dropCapOffset * previewScale) : (dropCapLines === 2 ? 18 : dropCapLines === 4 ? 32 : 26);
+                          const paddingVal = Math.max(12, rawPadding);
+
                           if (hasDropCap) {
                             return (
                               <div 
                                 key={`preview-line-${lIdx}`} 
                                 className={`relative mb-0.5 text-justify text-gray-700 text-[10px] leading-relaxed select-none ${editStyleClass}`}
+                                style={{
+                                  paddingLeft: `${paddingVal}px`
+                                }}
                                 onClick={handleLineClick}
                                 title={editTooltip}
                               >
-                                {/* Large visible floating drop cap letter */}
+                                {/* Large visible absolute drop cap letter */}
                                 <span 
-                                  className="float-left font-serif font-black mr-2 leading-none"
+                                  className="absolute left-0 top-0 font-serif font-black leading-none"
                                   style={{
                                     fontSize: dropCapLines === 2 ? '24px' : dropCapLines === 4 ? '44px' : '33px',
                                     color: accentColor,
-                                    marginTop: '1px',
+                                    marginTop: '2px',
                                     lineHeight: '0.85em',
                                   }}
                                 >
@@ -1066,7 +1079,7 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
                               key={`preview-line-${lIdx}`} 
                               className={`text-gray-700 text-[10px] leading-relaxed mb-0.5 text-justify ${editStyleClass}`}
                               style={{
-                                paddingLeft: isIndentedRow ? (dropCapLines === 2 ? '18px' : dropCapLines === 4 ? '32px' : '26px') : '0px'
+                                paddingLeft: isIndentedRow ? `${paddingVal}px` : '0px'
                               }}
                               onClick={handleLineClick}
                               title={editTooltip}
