@@ -89,6 +89,12 @@ export default function ManualOrGuideline({ onClose }: ManualOrGuidelineProps) {
       answer: 'Because books are bound near the inner seam, a portion of each inside page gets swallowed by glue and folding constraints. Gutter margins add a proportional offset to the binding edges of mirror pages (outer vs inner borders). Our formatter auto-determines your page count and locks in standard scale guidelines (e.g., 0.375" under 150 pages up to 0.750" for thick manuscripts) to ensure text always stays readable and centered.'
     },
     {
+      id: 'interior-p3',
+      category: 'interior',
+      question: 'Should I upload plain text or a document with previous custom formatting?',
+      answer: 'For the absolute best typesetting results—especially with drop caps, indented margins, and alignment—we strongly recommend uploading a clean plain-text (.txt) file or a standard unstyled Word (.docx) document. If your copy has pre-existing complex formatting, heavy manual indentation spaces, double-paragraph breaks, or rigid margin overrides, it can interfere with our automated grid alignment. Simply pasting or uploading clean, unstyled paragraphs separated by standard line breaks ensures a pixel-perfect print layout rendering!'
+    },
+    {
       id: 'general-p1',
       category: 'general',
       question: 'Why is PublishingForge 100% free with no account required?',
