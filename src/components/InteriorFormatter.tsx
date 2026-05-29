@@ -546,7 +546,7 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
                     paragraphStyle: 'indent' as const,
                     dropCapColor: '#065f46',
                     showDropCap: true,
-                    dropCapLines: 4,
+                    dropCapLines: 3,
                   }
                 ].map((preset) => (
                   <button

@@ -66,7 +66,7 @@ export function getDropCapOffset(char: string, fontSize: number, numLines: numbe
   else if (charUpper === 'I') relWidth = 333;
 
   const exactWidth = dcFontSize * (relWidth / 1000);
-  return Math.ceil(exactWidth + 1.5);
+  return Math.ceil(exactWidth + 6.0);
 }
 
 // Helper: convert hex string to rgb color vector
@@ -471,18 +471,21 @@ export function typesetManuscript(
 
     let activePageLines: LayoutLine[] = [];
     let currentHeightSum = 0;
+    let isCurrentPageChapterStart = false;
 
     for (let i = 0; i < currentLines.length; i++) {
       const line = currentLines[i];
-      const isChapterStartPage = line.isHeading && line.isTitle && activePageLines.length === 0;
-      const chapterHeaderDrop = isChapterStartPage ? (heightPts * 0.14) : 0;
+      if (activePageLines.length === 0) {
+        isCurrentPageChapterStart = line.isHeading && line.isTitle;
+      }
+      const chapterHeaderDrop = isCurrentPageChapterStart ? (heightPts * 0.14) : 0;
       const lineSpacing = line.isHeading ? h1Leading : leading;
 
       const hasTopImg = (interiorImages || []).some(img => img.pageNumber === pageNumber && img.layout === 'top');
       const hasBottomImg = (interiorImages || []).some(img => img.pageNumber === pageNumber && img.layout === 'bottom');
       const overheadHeight = (hasTopImg ? 130 : 0) + (hasBottomImg ? 130 : 0);
       let availableHeightPts = heightPts - topM - bottomM - 36 - overheadHeight;
-      if (isChapterStartPage) {
+      if (isCurrentPageChapterStart) {
         availableHeightPts -= chapterHeaderDrop;
       }
 
@@ -494,6 +497,7 @@ export function typesetManuscript(
         });
         activePageLines = [];
         currentHeightSum = 0;
+        isCurrentPageChapterStart = line.isHeading && line.isTitle;
       }
 
       if (line.isHeading && settings.chapterStartNewPage && activePageLines.length > 0) {
@@ -504,6 +508,7 @@ export function typesetManuscript(
         });
         activePageLines = [];
         currentHeightSum = 0;
+        isCurrentPageChapterStart = line.isHeading && line.isTitle;
       }
 
       activePageLines.push(line);
