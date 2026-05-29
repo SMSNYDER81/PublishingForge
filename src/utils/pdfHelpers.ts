@@ -11,6 +11,64 @@ import { getBarcodeData } from './barcodeGenerator';
 // Helper: convert inches to points
 export const inchesToPts = (inches: number) => inches * 72;
 
+// Helper: approximate the width of a string in a serif font
+export function measureTextSerifApprox(text: string, fontSize: number): number {
+  let relativeWidthSum = 0;
+  for (let i = 0; i < text.length; i++) {
+    const char = text.charAt(i);
+    const charCode = text.charCodeAt(i);
+    
+    // Average character width relative to 1000
+    let w = 500; 
+    
+    if (charCode >= 97 && charCode <= 122) { // lowercase a-z
+      const lowercaseWidths: Record<string, number> = {
+        a: 480, b: 500, c: 444, d: 500, e: 444, f: 333, g: 500, h: 500, i: 278, j: 278,
+        k: 500, l: 278, m: 778, n: 500, o: 500, p: 500, q: 500, r: 333, s: 389, t: 278,
+        u: 500, v: 500, w: 722, x: 500, y: 500, z: 444
+      };
+      w = lowercaseWidths[char] || 480;
+    } else if (charCode >= 65 && charCode <= 90) { // uppercase A-Z
+      const uppercaseWidths: Record<string, number> = {
+        A: 722, B: 667, C: 722, D: 722, E: 667, F: 611, G: 778, H: 778, I: 389, J: 389,
+        K: 722, L: 611, M: 889, N: 722, O: 778, P: 667, Q: 778, R: 722, S: 556, T: 667,
+        U: 722, V: 722, W: 944, X: 722, Y: 722, Z: 611
+      };
+      w = uppercaseWidths[char] || 700;
+    } else if (charCode >= 48 && charCode <= 57) { // numbers 0-9
+      w = 500;
+    } else { // punctuation / spaces
+      const specialWidths: Record<string, number> = {
+        ' ': 250, '.': 250, ',': 250, ';': 250, ':': 250, '!': 333, '?': 444,
+        '-': 333, '(': 333, ')': 333, '"': 400, "'": 250, '/': 400
+      };
+      w = specialWidths[char] || 350;
+    }
+    
+    relativeWidthSum += w;
+  }
+  
+  return (relativeWidthSum / 1000) * fontSize;
+}
+
+// Helper: Calculate exact drop cap offset based on character and height
+export function getDropCapOffset(char: string, fontSize: number, numLines: number, leading: number): number {
+  const dcFontSize = leading * numLines * 1.05;
+  const charUpper = char.toUpperCase();
+  let relWidth = 667; // default average
+  if (charUpper === 'W') relWidth = 944;
+  else if (charUpper === 'M') relWidth = 889;
+  else if (charUpper === 'O' || charUpper === 'G' || charUpper === 'Q' || charUpper === 'D' || charUpper === 'H' || charUpper === 'U' || charUpper === 'N') relWidth = 722;
+  else if (charUpper === 'C' || charUpper === 'K' || charUpper === 'R' || charUpper === 'A' || charUpper === 'B' || charUpper === 'E') relWidth = 667;
+  else if (charUpper === 'F' || charUpper === 'P' || charUpper === 'T' || charUpper === 'V' || charUpper === 'X') relWidth = 611;
+  else if (charUpper === 'S' || charUpper === 'L' || charUpper === 'Y' || charUpper === 'Z') relWidth = 556;
+  else if (charUpper === 'J') relWidth = 389;
+  else if (charUpper === 'I') relWidth = 333;
+
+  const exactWidth = dcFontSize * (relWidth / 1000);
+  return Math.ceil(exactWidth + 4);
+}
+
 // Helper: convert hex string to rgb color vector
 export const hexToColorVec = (hex: string) => {
   if (!hex || hex.charAt(0) !== '#') return rgb(0, 0, 0);
@@ -45,6 +103,7 @@ export interface LayoutLine {
   chapId?: string;
   pIdx?: number;
   isTitle?: boolean;
+  isLastLineOfParagraph?: boolean;
 }
 
 export interface LayoutPage {
@@ -166,9 +225,6 @@ export function typesetManuscript(
   // Helper to split paragraph text into wrap-compliant lines based on page width
   function wrapParagraph_internal(text: string, maxWidthPts: number, isH1: boolean = false): string[] {
     const fontSize = isH1 ? h1Size : bodySize;
-    const avgCharWidth = fontSize * charWidthApprox;
-    const maxChars = Math.floor(maxWidthPts / avgCharWidth);
-
     const words = text.split(/\s+/);
     const linesStr: string[] = [];
     let currentLine = '';
@@ -176,7 +232,8 @@ export function typesetManuscript(
     for (const word of words) {
       const spacing = currentLine ? ' ' : '';
       const testLine = currentLine + spacing + word;
-      if (testLine.length > maxChars && currentLine) {
+      const testWidth = measureTextSerifApprox(testLine, fontSize);
+      if (testWidth > maxWidthPts && currentLine) {
         linesStr.push(currentLine);
         currentLine = word;
       } else {
@@ -256,21 +313,23 @@ export function typesetManuscript(
         const dropCapChar = rawTrimmed.charAt(0);
         const pRestText = rawTrimmed.slice(1);
         const dropCapLinesCount = settings.dropCapLines || 3;
-        const dropCapOffsetVal = 24 + (settings.bodyFontSize - 11) * 2; // adaptive indented spacing
+        
+        // Exact glyph-based drop cap spacing calculation
+        const dropCapOffsetVal = getDropCapOffset(dropCapChar, bodySize, dropCapLinesCount, leading);
         
         // Wrap drop-cap paragraph with alternating margins
         const wrappedLines: string[] = [];
-        const fontScale = bodySize * charWidthApprox;
         const words = pRestText.split(/\s+/);
         let currentLine = '';
 
         for (const word of words) {
-          const testLine = currentLine ? currentLine + ' ' + word : word;
+          const spacing = currentLine ? ' ' : '';
+          const testLine = currentLine + spacing + word;
           const isIndentedRow = wrappedLines.length < dropCapLinesCount;
           const activeMaxWidth = isIndentedRow ? (contentWidthPts - dropCapOffsetVal) : contentWidthPts;
-          const maxChars = Math.max(8, Math.floor(activeMaxWidth / fontScale));
+          const testWidth = measureTextSerifApprox(testLine, bodySize);
 
-          if (testLine.length > maxChars && currentLine) {
+          if (testWidth > activeMaxWidth && currentLine) {
             wrappedLines.push(currentLine);
             currentLine = word;
           } else {
@@ -287,6 +346,7 @@ export function typesetManuscript(
           currentLines.push({
             text: wrappedLines[li],
             isHeading: false,
+            isLastLineOfParagraph: li === wrappedLines.length - 1,
             dropCapChar: li === 0 ? dropCapChar : undefined,
             dropCapOffset: isIndentedRow ? dropCapOffsetVal : undefined,
             dropCapLinesCount: dropCapLinesCount,
@@ -302,10 +362,11 @@ export function typesetManuscript(
         const textToWrap = displayPrefix + pText;
         const wrappedLines = wrapParagraph_internal(textToWrap, contentWidthPts, false);
 
-        for (const line of wrappedLines) {
+        for (let li = 0; li < wrappedLines.length; li++) {
           currentLines.push({ 
-            text: line, 
+            text: wrappedLines[li], 
             isHeading: false,
+            isLastLineOfParagraph: li === wrappedLines.length - 1,
             chapId: chap.id,
             pIdx: pIdx
           });
@@ -317,6 +378,7 @@ export function typesetManuscript(
         currentLines.push({ 
           text: '', 
           isHeading: false,
+          isLastLineOfParagraph: true,
           chapId: chap.id,
           pIdx: pIdx
         });
@@ -878,13 +940,46 @@ export async function compileInteriorPDF(
           });
         }
 
-        page.drawText(lineText, {
-          x: activeX,
-          y: cursorY,
-          size: bodySize,
-          font: fontRegular,
-          color: rgb(0.15, 0.15, 0.15),
-        });
+        const words = lineText.trim().split(/\s+/).filter(Boolean);
+        const shouldJustify = 
+          settings.justification === 'justify' &&
+          !line.isLastLineOfParagraph &&
+          words.length > 1;
+
+        if (shouldJustify) {
+          // Calculate the total width of all words without spaces
+          let totalWordsWidth = 0;
+          for (const word of words) {
+            totalWordsWidth += fontRegular.widthOfTextAtSize(word, bodySize);
+          }
+          
+          const maxLineX = widthPts - rightMargin;
+          const totalSpacingUnits = words.length - 1;
+          const availableSpace = maxLineX - activeX;
+          const spacePerWordGap = (availableSpace - totalWordsWidth) / totalSpacingUnits;
+          
+          let currentWordX = activeX;
+          for (let wi = 0; wi < words.length; wi++) {
+            const word = words[wi];
+            page.drawText(word, {
+              x: currentWordX,
+              y: cursorY,
+              size: bodySize,
+              font: fontRegular,
+              color: rgb(0.12, 0.12, 0.12),
+            });
+            currentWordX += fontRegular.widthOfTextAtSize(word, bodySize) + spacePerWordGap;
+          }
+        } else {
+          // Standard body line drawing
+          page.drawText(lineText, {
+            x: activeX,
+            y: cursorY,
+            size: bodySize,
+            font: fontRegular,
+            color: rgb(0.12, 0.12, 0.12),
+          });
+        }
         cursorY -= leading;
       }
     }

@@ -7,7 +7,8 @@ import React, { useState, useEffect } from 'react';
 import mammoth from 'mammoth';
 import { 
   FileText, Upload, Settings, BookOpen, Scaling, Type, Download, 
-  HelpCircle, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Sparkles 
+  HelpCircle, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Sparkles,
+  Maximize2, Minimize2
 } from 'lucide-react';
 import { InteriorSettings, Chapter } from '../types';
 import { PLATFORMS, TRIM_SIZES, DEFAULT_BOOK_CONTENT } from '../utils/presets';
@@ -75,6 +76,8 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
   
   // Selected page index inside the visual book preview
   const [previewPageIndex, setPreviewPageIndex] = useState<number>(0);
+  const [isExpanded, setIsExpanded] = useState<boolean>(false);
+  const [paperStock, setPaperStock] = useState<'white' | 'cream' | 'vellum'>('cream');
 
   // State for block being edited inline like a Word document
   const [editingBlock, setEditingBlock] = useState<{
@@ -161,12 +164,27 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
 
   // Helper parsing logic to chop manuscript into structured Chapters
   const parseRawManuscript = (rawText: string): Chapter[] => {
-    // Splits text looking for common boundaries "Chapter xx" or "CHAPTER"
-    const regex = /(?:Chapter|CHAPTER|Act|ACT|Section)\s+(\d+|\w+)(?::\s*(.*))?/g;
-    const parts = rawText.split(/(?=Chapter|CHAPTER|Act|ACT|Section\s+\d+)/g);
+    // Splits text looking for common boundaries like CHAPTER, Act, Section, Prologue, Epilogue, Introduction, Foreword, Preface
+    const pattern = /(?:^|\n)(?=(?:Chapter|CHAPTER|Act|ACT|Section|SECTION|Prologue|PROLOGUE|Epilogue|EPILOGUE|Introduction|INTRODUCTION|Foreword|FOREWORD|Preface|PREFACE)\b)/g;
+    const parts = rawText.split(pattern);
     
     const parsedChapters: Chapter[] = [];
     
+    // Helper to check if a line is a section header
+    const isHeadingLine = (line: string): boolean => {
+      const u = line.toUpperCase();
+      return (
+        u.startsWith('CHAPTER') ||
+        u.startsWith('ACT') ||
+        u.startsWith('SECTION') ||
+        u.startsWith('PROLOGUE') ||
+        u.startsWith('EPILOGUE') ||
+        u.startsWith('INTRODUCTION') ||
+        u.startsWith('PREFACE') ||
+        u.startsWith('FOREWORD')
+      );
+    };
+
     parts.forEach((block, idx) => {
       const trimmedBlock = block.trim();
       if (!trimmedBlock) return;
@@ -178,12 +196,32 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
       let title = firstLine; // fallback
       let parasIdx = 1;
 
-      // Check if title is clearly a chapter title
-      if (firstLine.toUpperCase().startsWith('CHAPTER') || firstLine.toUpperCase().startsWith('ACT')) {
-        title = firstLine;
+      // Check if title is clearly a chapter title or section heading
+      if (isHeadingLine(firstLine)) {
+        // Smart Title Consolidation:
+        // If the first line is short (like "Chapter 1" or "Chapter I") and there's a second line that is also short (and not another header)
+        if (lines.length > 1 && firstLine.length < 25 && lines[1].length < 60 && !isHeadingLine(lines[1])) {
+          title = `${firstLine}: ${lines[1]}`;
+          parasIdx = 2;
+          
+          // Let's also check if there is a third short subtitle, like location/date/author metadata (e.g. "? ? ?" or short text)
+          if (lines.length > 2 && lines[2].length < 60 && !isHeadingLine(lines[2]) && (lines[2].startsWith('?') || lines[2].length < 35)) {
+            title = `${title} — ${lines[2]}`;
+            parasIdx = 3;
+          }
+        } else {
+          title = firstLine;
+          parasIdx = 1;
+        }
       } else {
-        title = `Section ${idx + 1}`;
-        parasIdx = 0;
+        // Fallback: if first line is not a standard header keyword but is short enough, use it as title
+        if (firstLine.length < 50) {
+          title = firstLine;
+          parasIdx = 1;
+        } else {
+          title = `Section ${idx + 1}`;
+          parasIdx = 0;
+        }
       }
 
       parsedChapters.push({
@@ -307,7 +345,7 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
   };
 
   return (
-    <div id="interior-formatter-main" className="max-w-6xl mx-auto px-4 py-6">
+    <div id="interior-formatter-main" className={`mx-auto px-4 py-6 transition-all duration-300 ${isExpanded ? 'max-w-7xl' : 'max-w-6xl'}`}>
       
       {/* Header */}
       <div className="flex items-center justify-between mb-6 border-b border-gray-200 pb-4">
@@ -323,10 +361,10 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
         </span>
       </div>
 
-      <div className="grid lg:grid-cols-12 gap-8 items-start">
+      <div className={`grid ${isExpanded ? 'grid-cols-1' : 'lg:grid-cols-12'} gap-8 items-start transition-all duration-300`}>
         
-        {/* LEFT COLUMN: 5/12 settings sidebar */}
-        <div className="lg:col-span-5 space-y-6">
+        {/* LEFT COLUMN: settings sidebar */}
+        <div className={`${isExpanded ? 'order-2 bg-slate-50 border border-slate-200 p-6 rounded-2xl grid md:grid-cols-2 xl:grid-cols-3 gap-6 space-y-0' : 'lg:col-span-5 space-y-6'} transition-all duration-300`}>
           
           {/* AI Companion Copy & Layout Studio */}
           <AIAssistant 
@@ -395,6 +433,109 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
               <Settings className="w-4 h-4 text-emerald-600" />
               Format Options
             </h3>
+
+            {/* Premium Aesthetic Templates & Material Stocks */}
+            <div className="space-y-3 pb-3 border-b border-gray-100 font-mono text-xs">
+              <span className="block text-[10px] text-gray-400 font-bold uppercase tracking-wider">AESTHETIC STYLE PRESETS</span>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  {
+                    name: 'Literary',
+                    icon: '❦',
+                    desc: 'Georgia, Star ornament, indented paragraphs',
+                    bodyFont: 'EB Garamond',
+                    bodyFontSize: 11,
+                    lineSpacing: 1.35,
+                    chapterOrnament: 'triple-star' as const,
+                    chapterTitleAlign: 'center' as const,
+                    paragraphStyle: 'indent' as const,
+                    dropCapColor: '#8b1e0f',
+                    showDropCap: true,
+                    dropCapLines: 3,
+                  },
+                  {
+                    name: 'Modern',
+                    icon: '✦',
+                    desc: 'Baskerville Left-Ali, dividing bars, block text',
+                    bodyFont: 'Libre Baskerville',
+                    bodyFontSize: 10.5,
+                    lineSpacing: 1.3,
+                    chapterOrnament: 'divider-bar' as const,
+                    chapterTitleAlign: 'left' as const,
+                    paragraphStyle: 'block' as const,
+                    dropCapColor: '#1e3a8a',
+                    showDropCap: true,
+                    dropCapLines: 2,
+                  },
+                  {
+                    name: 'Luxury',
+                    icon: '❀',
+                    desc: 'Slender Cormorant Garamond, ornate titles',
+                    bodyFont: 'Cormorant Garamond',
+                    bodyFontSize: 11.5,
+                    lineSpacing: 1.4,
+                    chapterOrnament: 'floral-leaf' as const,
+                    chapterTitleAlign: 'fancy-frame' as const,
+                    paragraphStyle: 'indent' as const,
+                    dropCapColor: '#065f46',
+                    showDropCap: true,
+                    dropCapLines: 4,
+                  }
+                ].map((preset) => (
+                  <button
+                    key={preset.name}
+                    type="button"
+                    onClick={() => {
+                      setSettings(prev => ({
+                        ...prev,
+                        bodyFont: preset.bodyFont,
+                        bodyFontSize: preset.bodyFontSize,
+                        lineSpacing: preset.lineSpacing,
+                        chapterOrnament: preset.chapterOrnament,
+                        chapterTitleAlign: preset.chapterTitleAlign,
+                        paragraphStyle: preset.paragraphStyle,
+                        dropCapColor: preset.dropCapColor,
+                        showDropCap: preset.showDropCap,
+                        dropCapLines: preset.dropCapLines
+                      }));
+                    }}
+                    className={`flex flex-col items-center justify-center p-2 rounded-lg border text-center cursor-pointer transition-all ${
+                      settings.bodyFont === preset.bodyFont
+                        ? 'border-emerald-600 bg-emerald-50/50 text-emerald-800 font-bold shadow-sm'
+                        : 'border-gray-200 bg-white hover:bg-gray-50 text-gray-700'
+                    }`}
+                    title={preset.desc}
+                  >
+                    <span className="text-sm mb-0.5">{preset.icon}</span>
+                    <span className="text-[10px] uppercase font-bold tracking-tight">{preset.name}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="pt-2">
+                <span className="block text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-2">PAPER MATERIAL PREVIEW</span>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'cream', name: 'Gutter Ivory', class: 'bg-[#FAF6EE] text-amber-900 border-amber-200' },
+                    { id: 'white', name: 'Arctic Bright', class: 'bg-white text-gray-900 border-gray-200' },
+                    { id: 'vellum', name: 'Antique Aged', class: 'bg-[#F4EFE6] text-orange-950 border-amber-300' }
+                  ].map((stock) => (
+                    <button
+                      key={stock.id}
+                      type="button"
+                      onClick={() => setPaperStock(stock.id as any)}
+                      className={`py-1 px-1 text-[9px] uppercase font-bold text-center border rounded cursor-pointer transition-all shrink-0 ${
+                        paperStock === stock.id 
+                          ? `${stock.class} ring-2 ring-emerald-600 shadow-sm font-black` 
+                          : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      {stock.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
 
             {/* Geometry settings */}
             <div className="space-y-4 text-xs font-mono">
@@ -706,8 +847,8 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
 
         </div>
 
-        {/* RIGHT COLUMN: 7/12 browser paginated view and results */}
-        <div className="lg:col-span-7 space-y-6">
+        {/* RIGHT COLUMN: visual book preview */}
+        <div className={`${isExpanded ? 'order-1 w-full' : 'lg:col-span-7'} space-y-6 transition-all duration-300`}>
           
           {/* COMPLIANCE AUDITOR BOARD */}
           <div className="bg-gray-900 text-white rounded-xl p-5 font-mono shadow-sm border border-gray-800">
@@ -749,61 +890,102 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
           </div>
 
           {/* REALISTIC PAGINATED BOOK PAGE VIEW */}
-          <div className="bg-slate-100 rounded-xl border border-gray-200 p-4 md:p-6 shadow-inner flex flex-col items-center">
+          <div className="bg-slate-100 rounded-xl border border-gray-200 p-4 md:p-6 shadow-even flex flex-col items-center">
             <div className="w-full flex items-center justify-between mb-4 text-xs text-gray-500 font-mono">
               <span className="flex items-center gap-1.5 font-bold">
                 <BookOpen className="w-4 h-4 text-emerald-600" />
-                Simulated Page Visualizer (Alternating Spreading Gutter)
+                Simulated Page Visualizer {isExpanded ? "(Double-Spread Book Layout)" : "(Classic Page Mode)"}
               </span>
-              <span>
-                Page <span className="font-bold text-gray-900">{previewPageIndex + 1}</span> of {previewPages.length}
-              </span>
+              <div className="flex items-center gap-4">
+                <button
+                  type="button"
+                  onClick={() => setIsExpanded(!isExpanded)}
+                  className="flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-1 px-2 rounded-md font-bold text-[10.5px] cursor-pointer shadow-sm active:scale-95 transition-all"
+                  title={isExpanded ? "Exit Full Screen" : "Full Screen Double Spread"}
+                >
+                  {isExpanded ? (
+                    <>
+                      <Minimize2 className="w-3.5 h-3.5 text-emerald-600" />
+                      Exit Full Screen
+                    </>
+                  ) : (
+                    <>
+                      <Maximize2 className="w-3.5 h-3.5 text-emerald-600" />
+                      Full Screen Double Spread
+                    </>
+                  )}
+                </button>
+                <span>
+                  Page <span className="font-bold text-gray-900">{previewPageIndex + 1}</span> of {previewPages.length}
+                </span>
+              </div>
             </div>
 
-            {/* Simulated interactive book card */}
-            <div className="w-full flex justify-center py-4 select-none relative">
-              {activePage ? (
-                <>
+            {/* Custom local page card renderer for dry typesetting */}
+            {activePage ? (() => {
+              const renderPageCard = (pData: LayoutPage, side: 'left' | 'right' | 'single') => {
+                const isOdd = pData.pageNumber % 2 !== 0;
+                
+                // Gutter binding dynamic offsets inside vs outside margins
+                const useLeftPadding = (side === 'left') 
+                  ? `${Math.max(20, settings.outsideMargin * 40)}px`
+                  : (side === 'right')
+                  ? `${Math.max(20, settings.insideMargin * 40)}px`
+                  : isOdd 
+                  ? `${Math.max(20, settings.insideMargin * 40)}px` 
+                  : `${Math.max(20, settings.outsideMargin * 40)}px`;
+
+                const useRightPadding = (side === 'left')
+                  ? `${Math.max(20, settings.insideMargin * 40)}px`
+                  : (side === 'right')
+                  ? `${Math.max(20, settings.outsideMargin * 40)}px`
+                  : isOdd
+                  ? `${Math.max(20, settings.outsideMargin * 40)}px`
+                  : `${Math.max(20, settings.insideMargin * 40)}px`;
+
+                const paperBgColor = paperStock === 'cream' 
+                  ? '#FAF6EE' 
+                  : paperStock === 'vellum' 
+                  ? '#F4EFE6' 
+                  : '#FFFFFF';
+
+                return (
                   <div 
-                    id="simulated-book-page-card"
-                    className="bg-white rounded p-12 shadow-md relative border border-gray-200 overflow-hidden text-left"
+                    id={`page-card-${pData.pageNumber}`}
+                    className="rounded shadow-md relative border border-gray-200 overflow-hidden text-left transition-all duration-300"
                     style={{
                       width: '320px',
                       height: '460px',
+                      backgroundColor: paperBgColor,
                       fontFamily: settings.bodyFont === 'Times New Roman' ? 'serif' : settings.bodyFont,
-                      // Simulate mirror margin visual offsets dynamically
-                      paddingLeft: activePage.pageNumber % 2 !== 0 
-                        ? `${Math.max(20, settings.insideMargin * 40)}px` 
-                        : `${Math.max(20, settings.outsideMargin * 40)}px`,
-                      paddingRight: activePage.pageNumber % 2 !== 0 
-                        ? `${Math.max(20, settings.outsideMargin * 40)}px` 
-                        : `${Math.max(20, settings.insideMargin * 40)}px`,
+                      paddingLeft: useLeftPadding,
+                      paddingRight: useRightPadding,
                       paddingTop: `${Math.max(25, settings.topMargin * 40)}px`,
                       paddingBottom: `${Math.max(25, settings.bottomMargin * 40)}px`,
                     }}
                   >
                     {/* Mirror Inside Binder Highlight Gutter Line visually */}
                     <div 
-                      className="absolute top-0 bottom-0 w-1 bg-yellow-600/15 pointer-events-none"
+                      className="absolute top-0 bottom-0 w-1.5 bg-yellow-600/10 pointer-events-none"
                       style={{
-                        left: activePage.pageNumber % 2 !== 0 ? '0px' : 'auto',
-                        right: activePage.pageNumber % 2 === 0 ? '0px' : 'auto',
+                        left: side === 'left' ? 'auto' : side === 'right' ? '0px' : isOdd ? '0px' : 'auto',
+                        right: side === 'left' ? '0px' : side === 'right' ? 'auto' : isOdd ? 'auto' : '0px',
                       }}
                     />
 
                     {/* Header page title */}
-                    {settings.showRunningHeaders && activePage.pageNumber > 2 && (
-                      <div className="text-[9px] uppercase border-b border-gray-100 pb-1 text-center font-bold tracking-wider text-gray-400 absolute top-6 left-0 right-0 px-8">
-                        {activePage.pageNumber % 2 !== 0 
-                          ? (settings.headerOddText || 'BY AUTHOR') 
-                          : (settings.headerEvenText || 'BOOK TITLE')
+                    {settings.showRunningHeaders && pData.pageNumber > 2 && (
+                      <div className="text-[9px] uppercase border-b border-gray-100 pb-1 text-center font-bold tracking-wider text-gray-400 absolute top-6 left-0 right-0 px-8 truncate">
+                        {isOdd 
+                          ? (settings.headerOddText || 'BY AUTHOR').toUpperCase() 
+                          : (settings.headerEvenText || 'BOOK TITLE').toUpperCase()
                         }
                       </div>
                     )}
 
                     {/* Lines mapping visually */}
                     <div className="h-full flex flex-col justify-start overflow-hidden mt-2 text-xs leading-normal">
-                      {activePage.lines.map((line, lIdx) => {
+                      {pData.lines.map((line, lIdx) => {
                         const isEditable = !!line.chapId;
                         const editStyleClass = isEditable 
                           ? 'cursor-pointer hover:bg-emerald-50 hover:outline hover:outline-dashed hover:outline-1 hover:outline-emerald-400 rounded px-1 transition-all'
@@ -862,7 +1044,7 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
                               >
                                 {/* Large visible floating drop cap letter */}
                                 <span 
-                                  className="float-left font-serif font-black mr-1.5 leading-none"
+                                  className="float-left font-serif font-black mr-2 leading-none"
                                   style={{
                                     fontSize: dropCapLines === 2 ? '24px' : dropCapLines === 4 ? '44px' : '33px',
                                     color: accentColor,
@@ -896,16 +1078,54 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
                       })}
                     </div>
 
-                    {/* Footer Page Number centered */}
+                    {/* Footer Page Number aligned centered */}
                     <div className="absolute bottom-5 left-0 right-0 text-center text-[10px] font-bold text-gray-400">
-                      {activePage.pageNumber}
+                      {pData.pageNumber}
                     </div>
                   </div>
+                );
+              };
+
+              // Compute double spread indices
+              const isEvenPage = activePage.pageNumber % 2 === 0;
+              const leftPageIndex = isEvenPage ? previewPageIndex : previewPageIndex - 1;
+              const rightPageIndex = isEvenPage ? previewPageIndex + 1 : previewPageIndex;
+              const leftPageDef = leftPageIndex >= 0 ? previewPages[leftPageIndex] : null;
+              const rightPageDef = rightPageIndex < previewPages.length ? previewPages[rightPageIndex] : null;
+
+              return (
+                <div className="w-full flex justify-center py-4 select-none relative">
+                  {isExpanded ? (
+                    <div className="flex flex-col md:flex-row items-center gap-6 justify-center bg-slate-200/40 p-4 rounded-xl border border-dashed border-slate-300">
+                      {/* Left Page (Even) */}
+                      {leftPageDef ? (
+                        renderPageCard(leftPageDef, 'left')
+                      ) : (
+                        <div className="w-[320px] h-[460px] bg-slate-100/50 rounded border border-dashed border-gray-300 flex items-center justify-center text-[10px] font-mono text-gray-400">
+                          [ FLYLEAF / START OF BOOK ]
+                        </div>
+                      )}
+
+                      {/* Center spine gutter joint */}
+                      <div className="hidden md:block w-3 h-[460px] bg-gradient-to-r from-gray-300 via-gray-200/60 to-gray-300 shadow-inner z-10 shrink-0 border-l border-r border-gray-300/40" />
+
+                      {/* Right Page (Odd) */}
+                      {rightPageDef ? (
+                        renderPageCard(rightPageDef, 'right')
+                      ) : (
+                        <div className="w-[320px] h-[460px] bg-slate-100/50 rounded border border-dashed border-gray-300 flex items-center justify-center text-[10px] font-mono text-gray-400">
+                          [ FLYLEAF / END OF BOOK ]
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    renderPageCard(activePage, 'single')
+                  )}
 
                   {/* Word document style interactive overlay editor */}
                   {editingBlock && (
                     <div 
-                      className="absolute bg-slate-950/95 rounded-md shadow-2xl flex flex-col justify-between p-5 z-25 text-white font-sans border border-slate-700 animate-fade-in"
+                      className="absolute bg-slate-950/95 rounded-md shadow-2xl flex flex-col justify-between p-5 z-50 text-white font-sans border border-slate-700 animate-fade-in"
                       style={{
                         width: '320px',
                         height: '460px',
@@ -965,11 +1185,11 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
                       </div>
                     </div>
                   )}
-                </>
-              ) : (
-                <div className="text-gray-400 font-mono text-xs">No pages styled yet. Please upload content.</div>
-              )}
-            </div>
+                </div>
+              );
+            })() : (
+              <div className="text-gray-400 font-mono text-xs">No pages styled yet. Please upload content.</div>
+            )}
 
             {/* Pagination Visual control */}
             <div className="flex items-center gap-4 mt-2 font-mono">
