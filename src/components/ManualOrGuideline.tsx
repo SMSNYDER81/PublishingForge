@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { useState } from 'react';
 import { 
-  Info, HelpCircle, X, Scaling, AlertCircle 
+  Info, HelpCircle, X, Scaling, AlertCircle, ChevronDown, ChevronUp, Search, Palette, BookOpen, Sparkles, ShieldCheck 
 } from 'lucide-react';
 
 interface ManualOrGuidelineProps {
@@ -12,6 +13,97 @@ interface ManualOrGuidelineProps {
 }
 
 export default function ManualOrGuideline({ onClose }: ManualOrGuidelineProps) {
+  const [faqTab, setFaqTab] = useState<'all' | 'seo' | 'covers' | 'interior' | 'general'>('all');
+  const [expandedFaqs, setExpandedFaqs] = useState<Record<string, boolean>>({
+    'seo-p1': true // Expand the primary SEO simulator question by default for user guidance
+  });
+
+  const toggleFaq = (id: string) => {
+    setExpandedFaqs(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
+
+  const faqCategories = [
+    { id: 'all', label: 'All FAQs', icon: HelpCircle },
+    { id: 'seo', label: 'SEO Blog & Simulator', icon: Search },
+    { id: 'covers', label: 'Cover Builder', icon: Palette },
+    { id: 'interior', label: 'Interior Formatter', icon: BookOpen },
+    { id: 'general', label: 'Privacy & Safety', icon: ShieldCheck }
+  ] as const;
+
+  const faqItems = [
+    {
+      id: 'seo-p1',
+      category: 'seo',
+      question: 'What is the purpose of the SEO Blog & Search Simulator on this site?',
+      answer: 'The SEO Blog & Simulator provides self-publishing authors with a high-fidelity visual and analytical preview of search metadata before printing or listing. It serves two distinct roles: first, it hosts curated, print-ready guides written by formatting and marketing experts; second, it provides an interactive "SERP & Social Preview" workspace where you can test how your book title, meta description, and URL slug will display in major store search outputs and across social media (such as search snippets and post previews), allowing you to craft high-conversion listings before publishing.'
+    },
+    {
+      id: 'seo-p2',
+      category: 'seo',
+      question: 'How does the real-time SERP search simulator work?',
+      answer: 'You simply type in your book\'s target title, marketing description, and desired permalink slug. The simulator runs real-time character boundary validators (e.g., flagging title tags longer than 60 characters or description tags outside the optimal 110-160 range to prevent truncation). It then renders a live mock visual search card matching the official Google standard and a responsive social media feed card to show you exactly what potential readers will see in search engines and shared posts.'
+    },
+    {
+      id: 'seo-p3',
+      category: 'seo',
+      question: 'How does the Readability Sandbox and Keyword Density Tracker work?',
+      answer: 'The Interactive Assessment tool calculates real-time metrics including total word count, paragraph structures, and an estimated Flesch-Kincaid readability index (such as Academic, Standard, or Simple Prose). It also automatically parses your text to detect the frequency and raw density of high-search-volume publishing industry keywords (like \'KDP\', \'Bleed\', \'Spine\', \'Formatting\'). It cross-evaluates these with a 5-step search-readiness checklist to make sure your marketing descriptions are highly optimized and ready for search engine crawlers.'
+    },
+    {
+      id: 'seo-p4',
+      category: 'seo',
+      question: 'Can the system automatically rewrite or optimize my descriptions using AI?',
+      answer: 'Yes! The simulator features an integrated AI Upgrade Studio powered by Gemini. By clicking "refine draft", the text is securely passed to Gemini with precise instruction parameters (such as targeting specific self-publishing genres, tones, or audiences). The AI automatically rewrites your outline into a highly persuasive, keyword-rich hook, bulleted lists, and structured paragraph formats, which you can easily preview and apply.'
+    },
+    {
+      id: 'covers-p1',
+      category: 'covers',
+      question: 'How does the Cover Builder compute the exact spine width?',
+      answer: 'Cover wrap dimensions are determined by your final page count and chosen paper color density. The builder calculates the spine width using official POD (Print-On-Demand) formulas. White paper is thinner (0.002252 inches/page), and cream paper is thicker (0.0025 inches/page). The builder takes these variables, calculates the spine fold positions, adds the necessary 0.125" wrap bleed to all sides, and outputs a certified print-ready PDF template matching your precise specifications.'
+    },
+    {
+      id: 'covers-p2',
+      category: 'covers',
+      question: 'Can books of all page counts have printed text on the spine?',
+      answer: 'No. Under Amazon KDP standards, your book must have at least 79 finished pages to safely accommodate written text on the cover spine. For books with 78 pages or fewer, KDP requires a completely solid background block on the spine area with zero characters to prevent alignment shifting errors during mechanical wrapping.'
+    },
+    {
+      id: 'covers-p3',
+      category: 'covers',
+      question: 'How do I integrate my book\'s barcode onto the back cover wrap?',
+      answer: 'The system features an integrated vector barcode generator. If you enter your 13-digit ISBN (International Standard Book Number), the tool generates an official, error-free vector barcode image. It places it on the safe rear quadrant of your full-wrap cover, ensuring it passes distributor barcode scanners with 100% accuracy.'
+    },
+    {
+      id: 'interior-p1',
+      category: 'interior',
+      question: 'How does the Interior Formatter process .DOCX or .TXT manuscripts?',
+      answer: 'When you select a manuscript file, the engine parses its paragraphs locally. It strips corrupt style guides, inline breaks, and hidden characters that disrupt professional printing presses. It then automatically maps your prose to perfectly uniform typography grids, inserts mirror gutter margins for comfortable binding, places elegant dropdown caps, and formats running header designs and page numbers across the output.'
+    },
+    {
+      id: 'interior-p2',
+      category: 'interior',
+      question: 'What are gutter margins, and why are they necessary for interior pages?',
+      answer: 'Because books are bound near the inner seam, a portion of each inside page gets swallowed by glue and folding constraints. Gutter margins add a proportional offset to the binding edges of mirror pages (outer vs inner borders). Our formatter auto-determines your page count and locks in standard scale guidelines (e.g., 0.375" under 150 pages up to 0.750" for thick manuscripts) to ensure text always stays readable and centered.'
+    },
+    {
+      id: 'general-p1',
+      category: 'general',
+      question: 'Why is PublishingForge 100% free with no account required?',
+      answer: 'PublishingForge was designed to democratize book publishing by providing a top-tier sandbox without hidden lock-ins, royalty commissions, or premium accounts. The platform runs entirely in-memory. If you wish to use the advanced AI features, you can easily use our default server keys or input your own personal, free Gemini API key to keep your usage entirely independent.'
+    },
+    {
+      id: 'general-p2',
+      category: 'general',
+      question: 'Are my private manuscripts or cover graphics uploaded to external servers?',
+      answer: 'Absolutely not. PublishingForge operates as an offline-first client-side utility workspace. All manuscript layout generation, cover composites, barcode generation, and PDF compilations are executed inside your browser\'s temporary memory threads. Your private intellectual property never touches the cloud, keeping your creative works 100% secure.'
+    }
+  ];
+
+  const filteredFaqs = faqItems.filter(item => faqTab === 'all' || item.category === faqTab);
+
   return (
     <div id="guideline-specifications-modal" className="bg-white border border-slate-200 rounded-2xl p-6 md:p-8 max-w-4xl mx-auto shadow-2xl relative max-h-[85vh] overflow-y-auto">
       
@@ -163,26 +255,94 @@ export default function ManualOrGuideline({ onClose }: ManualOrGuidelineProps) {
           </div>
         </div>
 
-        {/* Short Answers */}
-        <div>
-          <h3 className="text-sm font-mono font-bold text-slate-500 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2 flex items-center gap-2">
-            <HelpCircle className="w-4 h-4 text-emerald-600" />
-            Frequently Answered Questions
-          </h3>
-          <div className="space-y-4">
-            <div>
-              <h4 className="font-bold text-slate-900 text-xs">How is my spine width accurately computed?</h4>
-              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                In print production, pigment weight dictates sheet thickness. We run exact, certified formulas (e.g. KDP White standard: 0.0025 inches/page; Cream paper: 0.002347 inches/page) against your precise page count to prevent trim overlaps.
-              </p>
-            </div>
+        {/* Expanded Rich Interactive FAQ Section */}
+        <div className="mt-6 pt-4 border-t border-slate-200">
+          <div className="mb-6">
+            <h3 className="text-sm font-mono font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-2">
+              <HelpCircle className="w-4 h-4 text-indigo-600" />
+              Frequently Answered Questions
+            </h3>
+            <p className="text-xs text-slate-500 font-serif italic">
+              Click any question below to toggle detailed guides, print formulas, and platform capabilities.
+            </p>
+          </div>
 
-            <div>
-              <h4 className="font-semibold text-slate-900 text-xs">Are my private books uploaded to servers?</h4>
-              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                No. PublishingForge acts as a client-side sandbox. All document processing, cover composting, and PDF compilation run local memory threads. Your creative manuscripts never touch the cloud.
+          {/* Category Tabs */}
+          <div className="flex flex-wrap gap-2 mb-6">
+            {faqCategories.map(cat => {
+              const IconComponent = cat.icon;
+              const isActive = faqTab === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setFaqTab(cat.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all border outline-none cursor-pointer ${
+                    isActive 
+                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs' 
+                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  }`}
+                >
+                  <IconComponent className="w-3.5 h-3.5" />
+                  {cat.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Collapsible Accordion Grid */}
+          <div className="space-y-3">
+            {filteredFaqs.length > 0 ? (
+              filteredFaqs.map(item => {
+                const isExpanded = !!expandedFaqs[item.id];
+                return (
+                  <div 
+                    key={item.id} 
+                    className={`border rounded-xl transition-all duration-300 overflow-hidden ${
+                      isExpanded 
+                        ? 'border-indigo-200 bg-indigo-50/20 shadow-xs' 
+                        : 'border-slate-200/80 bg-white hover:border-slate-300'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleFaq(item.id)}
+                      className="w-full text-left px-5 py-4 flex items-center justify-between gap-4 select-none outline-none focus:bg-slate-50/50"
+                    >
+                      <span className="font-bold text-slate-900 text-xs md:text-sm leading-snug">
+                        {item.question}
+                      </span>
+                      <span className="text-slate-400 shrink-0 p-1 bg-slate-50 border border-slate-100 rounded-md">
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4 text-indigo-600" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4" />
+                        )}
+                      </span>
+                    </button>
+                    
+                    {isExpanded && (
+                      <div className="px-5 pb-5 pt-1 animate-in fade-in duration-200 border-t border-slate-100/50">
+                        <p className="text-xs md:text-sm text-slate-700 leading-relaxed">
+                          {item.answer}
+                        </p>
+                        
+                        {/* Categorization Indicator Badge in Answer block */}
+                        <div className="mt-3 flex justify-end">
+                          <span className="text-[9px] font-mono font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200/40">
+                            Category: {item.category === 'seo' ? 'SEO & Simulator' : item.category === 'covers' ? 'Covers Builder' : item.category === 'interior' ? 'Interior' : 'Safety & Pricing'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            ) : (
+              <p className="text-xs text-slate-400 font-mono italic text-center py-6">
+                No questions found under this category filter.
               </p>
-            </div>
+            )}
           </div>
         </div>
       </div>
