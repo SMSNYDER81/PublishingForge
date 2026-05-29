@@ -1238,18 +1238,27 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
                           const hasDropCap = !!line.dropCapChar;
                           const dropCapLines = line.dropCapLinesCount || 3;
                           const accentColor = line.dropCapColor || '#4f46e5';
- 
+                          
+                          const scaledFontSize = (settings.bodyFontSize || 11) * previewScale;
+                          const scaledLineHeight = scaledFontSize * (settings.lineSpacing || 1.35);
+  
                           // Calculate dynamic padding on screen using scaled dropCapOffset directly
                           const rawPadding = line.dropCapOffset ? (line.dropCapOffset * previewScale) : (dropCapLines === 2 ? 18 : dropCapLines === 4 ? 32 : 26);
                           const paddingVal = Math.max(12, rawPadding);
- 
+  
                           if (hasDropCap) {
+                            const dcFontSize = (settings.bodyFontSize || 11) * (settings.lineSpacing || 1.35) * dropCapLines * 1.05;
+                            const scaledDcFontSize = dcFontSize * previewScale;
                             return (
                               <div 
                                 key={`preview-line-${lIdx}`} 
-                                className={`relative mb-0.5 text-justify text-gray-700 text-[10px] leading-relaxed select-none ${editStyleClass}`}
+                                className={`relative select-none ${editStyleClass}`}
                                 style={{
-                                  paddingLeft: `${paddingVal}px`
+                                  paddingLeft: `${paddingVal}px`,
+                                  fontSize: `${scaledFontSize}px`,
+                                  lineHeight: `${scaledLineHeight}px`,
+                                  marginBottom: `${scaledFontSize * 0.1}px`,
+                                  color: '#1f2937'
                                 }}
                                 onClick={handleLineClick}
                                 title={editTooltip}
@@ -1258,19 +1267,20 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
                                 <span 
                                   className="absolute left-0 top-0 font-serif font-black leading-none"
                                   style={{
-                                    fontSize: dropCapLines === 2 ? '24px' : dropCapLines === 4 ? '44px' : '33px',
+                                    fontSize: `${scaledDcFontSize}px`,
                                     color: accentColor,
-                                    marginTop: '2px',
                                     lineHeight: '0.85em',
+                                    transform: 'scaleY(0.95)',
+                                    transformOrigin: 'top left'
                                   }}
                                 >
                                   {line.dropCapChar}
                                 </span>
-                                <span>{line.text}</span>
+                                <span className={line.align === 'center' ? 'text-center block' : 'text-justify block'}>{line.text}</span>
                               </div>
                             );
                           }
- 
+  
                           // Add visual indentation spacing if we are in subsequent indented rows around the dropcap
                           const isIndentedRow = line.dropCapOffset !== undefined;
                           const alignClass = line.align === 'center' ? 'text-center' : 'text-justify';
@@ -1278,9 +1288,12 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
                           return (
                             <p 
                               key={`preview-line-${lIdx}`} 
-                              className={`text-gray-700 text-[10px] leading-relaxed mb-0.5 ${alignClass} ${italicClass} ${editStyleClass}`}
+                              className={`mb-0.5 ${alignClass} ${italicClass} ${editStyleClass}`}
                               style={{
-                                paddingLeft: isIndentedRow ? `${paddingVal}px` : '0px'
+                                paddingLeft: isIndentedRow ? `${paddingVal}px` : '0px',
+                                fontSize: `${scaledFontSize}px`,
+                                lineHeight: `${scaledLineHeight}px`,
+                                color: '#1f2937'
                               }}
                               onClick={handleLineClick}
                               title={editTooltip}
