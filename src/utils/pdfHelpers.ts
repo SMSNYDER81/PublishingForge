@@ -104,6 +104,8 @@ export interface LayoutLine {
   pIdx?: number;
   isTitle?: boolean;
   isLastLineOfParagraph?: boolean;
+  isItalic?: boolean;
+  isDedication?: boolean;
 }
 
 export interface LayoutPage {
@@ -219,6 +221,59 @@ export function typesetManuscript(
     pagesList.push({
       pageNumber: pageNumber++,
       lines: copyrightLines
+    });
+  }
+
+  // Dedication Page typesetting
+  if (settings.includeDedicationPage && settings.dedicationText) {
+    const dedicationLines: LayoutLine[] = [];
+    const contentWidthPts = widthPts - inchesToPts(settings.insideMargin) - inchesToPts(settings.outsideMargin);
+    
+    // Wrap paragraph text elegantly (using a slightly narrow column width ratio for visual balance)
+    const wrappedDediLines = wrapParagraph_internal(settings.dedicationText, contentWidthPts * 0.82);
+    
+    // Position vertically: push to upper-middle (about 38% down the page)
+    const bodySizeVal = settings.bodyFontSize;
+    const leadingVal = bodySizeVal * settings.lineSpacing;
+    const approxLinesPerPage = Math.floor((heightPts - inchesToPts(settings.topMargin) - inchesToPts(settings.bottomMargin) - 50) / leadingVal);
+    const topPaddingLines = Math.max(3, Math.floor((approxLinesPerPage - wrappedDediLines.length) * 0.38));
+    
+    for (let s = 0; s < topPaddingLines; s++) {
+      dedicationLines.push({ text: '', isHeading: false });
+    }
+    
+    // Top Ornaments
+    if (settings.dedicationStyle === 'fancy') {
+      let topOrnament = '❦';
+      if (settings.chapterOrnament === 'triple-star') topOrnament = '✦   ✦   ✦';
+      else if (settings.chapterOrnament === 'floral-leaf') topOrnament = '❦   ❊   ❦';
+      else if (settings.chapterOrnament === 'divider-bar') topOrnament = '═══ ❃ ═══';
+      dedicationLines.push({ text: topOrnament, isHeading: false, isOrnament: true, align: 'center' });
+      dedicationLines.push({ text: '', isHeading: false });
+    }
+    
+    for (const dLine of wrappedDediLines) {
+      dedicationLines.push({
+        text: dLine,
+        isHeading: false,
+        align: 'center',
+        isItalic: true,
+        isDedication: true
+      });
+    }
+    
+    // Bottom Ornaments
+    if (settings.dedicationStyle === 'fancy') {
+      dedicationLines.push({ text: '', isHeading: false });
+      dedicationLines.push({ text: '❧', isHeading: false, isOrnament: true, align: 'center' });
+    } else if (settings.dedicationStyle === 'poetic') {
+      dedicationLines.push({ text: '', isHeading: false });
+      dedicationLines.push({ text: '❦   ❦   ❦', isHeading: false, isOrnament: true, align: 'center' });
+    }
+    
+    pagesList.push({
+      pageNumber: pageNumber++,
+      lines: dedicationLines
     });
   }
 
@@ -428,6 +483,47 @@ export function typesetManuscript(
         lines: activePageLines
       });
     }
+  }
+
+  // Colophon & Printer's Mark typesetting (traditionally at the tail-end of premium publications)
+  if (settings.includeColophonPage && settings.colophonText) {
+    const colophonLines: LayoutLine[] = [];
+    const contentWidthPts = widthPts - inchesToPts(settings.insideMargin) - inchesToPts(settings.outsideMargin);
+    
+    // Wrap paragraph text elegantly (using a narrow column width ratio for visual delicacy)
+    const wrappedColLines = wrapParagraph_internal(settings.colophonText, contentWidthPts * 0.78);
+    
+    // Position vertically: push to lower-middle (about 52% down the page)
+    const bodySizeVal = settings.bodyFontSize;
+    const leadingVal = bodySizeVal * settings.lineSpacing;
+    const approxLinesPerPage = Math.floor((heightPts - inchesToPts(settings.topMargin) - inchesToPts(settings.bottomMargin) - 50) / leadingVal);
+    const topPaddingLines = Math.max(3, Math.floor((approxLinesPerPage - wrappedColLines.length) * 0.52));
+    
+    for (let s = 0; s < topPaddingLines; s++) {
+      colophonLines.push({ text: '', isHeading: false });
+    }
+    
+    // Beautiful header
+    colophonLines.push({ text: 'COLOPHON', isHeading: false, isOrnament: true, align: 'center' });
+    colophonLines.push({ text: '', isHeading: false });
+    
+    for (const cLine of wrappedColLines) {
+      colophonLines.push({
+        text: cLine,
+        isHeading: false,
+        align: 'center',
+        isItalic: false,
+        isDedication: true // flag isDedication to center and use secondary aesthetic text
+      });
+    }
+    
+    colophonLines.push({ text: '', isHeading: false });
+    colophonLines.push({ text: '❧   ❦   ❧', isHeading: false, isOrnament: true, align: 'center' });
+    
+    pagesList.push({
+      pageNumber: pageNumber++,
+      lines: colophonLines
+    });
   }
 
   return pagesList;
@@ -948,9 +1044,10 @@ export async function compileInteriorPDF(
 
         if (shouldJustify) {
           // Calculate the total width of all words without spaces
+          const useFont = line.isItalic ? fontItalic : fontRegular;
           let totalWordsWidth = 0;
           for (const word of words) {
-            totalWordsWidth += fontRegular.widthOfTextAtSize(word, bodySize);
+            totalWordsWidth += useFont.widthOfTextAtSize(word, bodySize);
           }
           
           const maxLineX = widthPts - rightMargin;
@@ -965,19 +1062,29 @@ export async function compileInteriorPDF(
               x: currentWordX,
               y: cursorY,
               size: bodySize,
-              font: fontRegular,
+              font: useFont,
               color: rgb(0.12, 0.12, 0.12),
             });
-            currentWordX += fontRegular.widthOfTextAtSize(word, bodySize) + spacePerWordGap;
+            currentWordX += useFont.widthOfTextAtSize(word, bodySize) + spacePerWordGap;
           }
         } else {
-          // Standard body line drawing
+          // Standard body line drawing, supporting centering and italicization
+          const useFont = line.isItalic ? fontItalic : fontRegular;
+          const useSize = line.isDedication ? bodySize * 0.95 : bodySize;
+          const useColor = line.isDedication ? rgb(0.2, 0.2, 0.2) : rgb(0.12, 0.12, 0.12);
+          
+          let drawX = activeX;
+          if (line.align === 'center') {
+            const textWidth = useFont.widthOfTextAtSize(lineText, useSize);
+            drawX = (widthPts - textWidth) / 2;
+          }
+          
           page.drawText(lineText, {
-            x: activeX,
+            x: drawX,
             y: cursorY,
-            size: bodySize,
-            font: fontRegular,
-            color: rgb(0.12, 0.12, 0.12),
+            size: useSize,
+            font: useFont,
+            color: useColor,
           });
         }
         cursorY -= leading;

@@ -121,6 +121,20 @@ Genre: ${genre || 'Fiction'}
 Tone: ${tone || 'Evocative'}
 
 Provide a list of 5-6 chapter titles with a 1-sentence synopsis/theme for each, styled in beautiful markdown description lists. Avoid generic labels like "Chapter 1: Summary", make them sound like real novels (e.g., 'The Hearth of Forgotten Tongues', 'Signs in the Slag').`;
+    } else if (action === 'dedication') {
+      prompt = `You are an elite, award-winning literary copy editor.
+Generate three (3) distinct, beautiful, and deeply evocative book interior dedications.
+
+The author wants to dedicate their book to: "${text || 'My family'}"
+Vibe/Tone Style: ${tone || 'Heartfelt & Deeply Emotional'}
+Book Genre: ${genre || 'Fiction'}
+
+Format Specs:
+- Draft 1 (Classic & Elegant): Poignant, ultra-brief, and perfectly balanced (1 short sentence).
+- Draft 2 (Poetic & Moody): Rich with metaphorical imagery or emotional resonance (1-2 sentences).
+- Draft 3 (Stylistic & Bold): A clever, funny, or highly unique option tailored to the requested tone (e.g., funny, academic, romantic).
+
+Deliver only the three options. Display them with beautiful, clear headers such as "**Option 1: Traditional**" and do not include conversational introductions or signature lines. Use standard typographic symbols if helpful.`;
     } else {
       return res.status(400).json({ error: `Unknown action: ${action}` });
     }

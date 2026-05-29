@@ -107,6 +107,11 @@ export interface InteriorSettings {
   // Front Matter
   includeTitlePage: boolean;
   includeCopyrightPage: boolean;
+  includeDedicationPage?: boolean;
+  dedicationText?: string;
+  dedicationStyle?: 'classic' | 'minimal' | 'poetic' | 'fancy';
+  includeColophonPage?: boolean;
+  colophonText?: string;
   bookTitle: string;
   bookSubtitle: string;
   authorName: string;

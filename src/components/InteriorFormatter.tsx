@@ -54,6 +54,11 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
     // Front matter text elements
     includeTitlePage: true,
     includeCopyrightPage: true,
+    includeDedicationPage: true,
+    dedicationText: "For those who forge words in the dark, and the memory-keepers who carry them into the light.",
+    dedicationStyle: 'classic',
+    includeColophonPage: true,
+    colophonText: "This copy was set in EB Garamond type, modeled after the historic sixteenth-century roman fonts of Claude Garamond, integrated with modern Cormorant digital revivals. The interior pages were composed dynamically by the client-side typesetter of the PublishingForge, adhering strictly to the highest trade printing design standards. Bound and distributed for dreamers and scribes everywhere.",
     bookTitle: 'The Sparks of Creation',
     bookSubtitle: 'A Chronicle of the Forge Era',
     authorName: 'D. Scribe',
@@ -87,6 +92,42 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
     initialValue: string;
     currentValue: string;
   } | null>(null);
+
+  // AI Dedication Wizard states
+  const [showDedicationWizard, setShowDedicationWizard] = useState<boolean>(false);
+  const [dedicateTarget, setDedicateTarget] = useState<string>('');
+  const [dedicateTone, setDedicateTone] = useState<string>('Heartfelt & Deeply Emotional');
+  const [dedicateLoading, setDedicateLoading] = useState<boolean>(false);
+  const [dedicateResult, setDedicateResult] = useState<string>('');
+
+  const generateDedication = async () => {
+    if (!dedicateTarget.trim()) return;
+    setDedicateLoading(true);
+    setDedicateResult('');
+    try {
+      const response = await fetch('/api/ai/optimize', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          action: 'dedication',
+          text: dedicateTarget,
+          tone: dedicateTone,
+          genre: 'Fiction/Literature'
+        })
+      });
+      if (!response.ok) {
+        throw new Error('Failed to generate dedication');
+      }
+      const data = await response.json();
+      setDedicateResult(data.result);
+    } catch (err: any) {
+      setDedicateResult(`Error: ${err?.message || 'Could not draft dedication options at this time. Please try again.'}`);
+    } finally {
+      setDedicateLoading(false);
+    }
+  };
 
   const startEditing = (chapId: string, pIdx: number | undefined, isTitle: boolean, text: string) => {
     let targetText = text;
@@ -839,6 +880,163 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
                       className="w-full bg-white border border-gray-200 p-1 rounded text-gray-800"
                     />
                   </div>
+
+                  {/* Luxury Front-Matter Additions */}
+                  <div className="border-t border-gray-200/60 pt-3 mt-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-1.5">
+                        <input 
+                          type="checkbox" 
+                          id="dedication-page-chk"
+                          checked={settings.includeDedicationPage || false} 
+                          onChange={(e) => setSettings(p => ({ ...p, includeDedicationPage: e.target.checked }))}
+                        />
+                        <label htmlFor="dedication-page-chk" className="text-[10px] font-bold text-gray-800">Include Dedication Page</label>
+                      </div>
+                      
+                      {settings.includeDedicationPage && (
+                        <button
+                          type="button"
+                          onClick={() => setShowDedicationWizard(!showDedicationWizard)}
+                          className="text-[9px] px-1.5 py-0.5 font-bold rounded bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 flex items-center gap-1 transition"
+                        >
+                          ✦ Draft with AI
+                        </button>
+                      )}
+                    </div>
+
+                    {settings.includeDedicationPage && (
+                      <div className="space-y-2.5 pl-4 pb-2">
+                        {showDedicationWizard && (
+                          <div className="bg-amber-50/70 border border-amber-200/80 rounded p-2.5 space-y-2 mt-1">
+                            <span className="block text-[9px] font-bold uppercase text-amber-800">AI Dedication Studio</span>
+                            <div>
+                              <label className="block text-[9px] text-amber-700">Dedicated To (e.g. My daughter, my chemistry teacher):</label>
+                              <input 
+                                type="text"
+                                placeholder="..."
+                                value={dedicateTarget}
+                                onChange={(e) => setDedicateTarget(e.target.value)}
+                                className="w-full bg-white border border-amber-200 p-1 rounded text-[10px] text-gray-800 mt-0.5 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                              />
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-1.5">
+                              <div>
+                                <label className="block text-[9px] text-amber-700">Aesthetic Tone:</label>
+                                <select
+                                  value={dedicateTone}
+                                  onChange={(e) => setDedicateTone(e.target.value)}
+                                  className="w-full bg-white border border-amber-200 p-0.5 rounded text-[9px]"
+                                >
+                                  <option>Heartfelt & Deeply Emotional</option>
+                                  <option>Poetic & Mystical</option>
+                                  <option>Sardonic & Funny</option>
+                                  <option>Simple & Minimalist</option>
+                                  <option>Academic & Scholarly</option>
+                                </select>
+                              </div>
+                              <div className="flex items-end">
+                                <button
+                                  type="button"
+                                  onClick={generateDedication}
+                                  disabled={dedicateLoading || !dedicateTarget.trim()}
+                                  className="w-full bg-gray-900 text-white rounded py-1 px-2 text-[9px] font-bold hover:bg-gray-800 disabled:opacity-50"
+                                >
+                                  {dedicateLoading ? 'Crafting...' : 'Build Drafts'}
+                                </button>
+                              </div>
+                            </div>
+
+                            {dedicateResult && (
+                              <div className="bg-white rounded border border-amber-150 p-2 text-[10px] text-gray-800 max-h-36 overflow-y-auto font-serif">
+                                <p className="font-sans font-bold text-[8px] text-amber-800 mb-1">CHOOSE AN OPTION BELOW:</p>
+                                {dedicateResult.split(/\n\n+/).map((option, oIdx) => {
+                                  if (!option.trim()) return null;
+                                  const optionHeader = option.match(/\*\*(.*?)\*\*/)?.[1] || `Draft ${oIdx+1}`;
+                                  const textToUse = option.replace(/\*\*(.*?)\*\*/g, '').replace(/^[-\*\s\d\.]+/g, '').trim();
+                                  
+                                  if (!textToUse) return null;
+                                  return (
+                                    <div key={oIdx} className="border-b border-gray-100 last:border-b-0 pb-1.5 mb-1.5 last:mb-0 last:pb-0">
+                                      <span className="block text-[8px] uppercase font-bold text-gray-400">{optionHeader}</span>
+                                      <p className="italic text-gray-700 my-0.5 leading-normal">{textToUse}</p>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setSettings(p => ({ ...p, dedicationText: textToUse }));
+                                          setShowDedicationWizard(false);
+                                        }}
+                                        className="text-[8px] text-amber-700 hover:underline font-bold"
+                                      >
+                                        Use this draft
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        <div>
+                          <label className="block text-gray-500 text-[10px] mb-0.5">Style Style</label>
+                          <select 
+                            value={settings.dedicationStyle || 'classic'} 
+                            onChange={(e) => setSettings(p => ({ ...p, dedicationStyle: e.target.value as any }))}
+                            className="w-full bg-white border border-gray-200 p-0.5 rounded text-gray-800 text-[10px]"
+                          >
+                            <option value="classic">Classic Centered Italic</option>
+                            <option value="minimal">Minimalist Clean (No Ornaments)</option>
+                            <option value="poetic">Poetic Frame (Fleuron Starters)</option>
+                            <option value="fancy">Ornate Victorian (Top & Bottom Scrolls)</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-gray-500 text-[10px] mb-0.5">Dedication Verse</label>
+                          <textarea 
+                            rows={2}
+                            value={settings.dedicationText || ''} 
+                            onChange={(e) => setSettings(p => ({ ...p, dedicationText: e.target.value }))}
+                            className="w-full bg-white border border-gray-200 p-1 rounded text-gray-800 text-[10px] font-serif italic"
+                            placeholder="To whom is this work dedicated?"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Luxury Colophon Page Additions */}
+                  <div className="border-t border-gray-200/60 pt-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-1.5">
+                        <input 
+                          type="checkbox" 
+                          id="colophon-page-chk"
+                          checked={settings.includeColophonPage || false} 
+                          onChange={(e) => setSettings(p => ({ ...p, includeColophonPage: e.target.checked }))}
+                        />
+                        <label htmlFor="colophon-page-chk" className="text-[10px] font-bold text-gray-800">Include Colophon Page</label>
+                      </div>
+                    </div>
+
+                    {settings.includeColophonPage && (
+                      <div className="space-y-1 pl-4 pb-2">
+                        <label className="block text-gray-500 text-[10px] mb-0.5">Typography & Composition Notes</label>
+                        <textarea 
+                          rows={3}
+                          value={settings.colophonText || ''} 
+                          onChange={(e) => setSettings(p => ({ ...p, colophonText: e.target.value }))}
+                          className="w-full bg-white border border-gray-200 p-1 rounded text-gray-800 text-[10px]"
+                          placeholder="Typeface and manufacturing details..."
+                        />
+                        <p className="text-[8px] text-gray-400 leading-normal font-sans italic">
+                          Colophons are printed on the very last page of the volume in premium literary presses, naming font families, type setters, and printing specs.
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1029,21 +1227,22 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
                           else if (settings.chapterOrnament === 'divider-bar') ornamentStr = '═══ ✥ ═══';
                           else if (settings.chapterOrnament === 'none') ornamentStr = '';
                           
-                          if (!ornamentStr) return null;
+                          const finalOrnamentText = (line.text && line.text.trim()) ? line.text : ornamentStr;
+                          if (!finalOrnamentText) return null;
                           return (
                             <div key={`preview-line-${lIdx}`} className="text-center text-amber-600 my-1 font-mono text-[10px] tracking-widest">
-                              {ornamentStr}
+                              {finalOrnamentText}
                             </div>
                           );
                         } else {
                           const hasDropCap = !!line.dropCapChar;
                           const dropCapLines = line.dropCapLinesCount || 3;
                           const accentColor = line.dropCapColor || '#4f46e5';
-
+ 
                           // Calculate dynamic padding on screen using scaled dropCapOffset directly
                           const rawPadding = line.dropCapOffset ? (line.dropCapOffset * previewScale) : (dropCapLines === 2 ? 18 : dropCapLines === 4 ? 32 : 26);
                           const paddingVal = Math.max(12, rawPadding);
-
+ 
                           if (hasDropCap) {
                             return (
                               <div 
@@ -1071,13 +1270,15 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
                               </div>
                             );
                           }
-
+ 
                           // Add visual indentation spacing if we are in subsequent indented rows around the dropcap
                           const isIndentedRow = line.dropCapOffset !== undefined;
+                          const alignClass = line.align === 'center' ? 'text-center' : 'text-justify';
+                          const italicClass = line.isItalic ? 'italic text-emerald-900 font-serif font-medium tracking-wide' : '';
                           return (
                             <p 
                               key={`preview-line-${lIdx}`} 
-                              className={`text-gray-700 text-[10px] leading-relaxed mb-0.5 text-justify ${editStyleClass}`}
+                              className={`text-gray-700 text-[10px] leading-relaxed mb-0.5 ${alignClass} ${italicClass} ${editStyleClass}`}
                               style={{
                                 paddingLeft: isIndentedRow ? `${paddingVal}px` : '0px'
                               }}
