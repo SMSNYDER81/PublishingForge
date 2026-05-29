@@ -17,13 +17,13 @@ export const PLATFORMS: Record<PlatformId, PlatformPreset> = {
     },
     getMargins: (pageCount: number) => {
       if (pageCount <= 150) {
-        return { inside: 0.375, outside: 0.25, top: 0.25, bottom: 0.25 };
+        return { inside: 0.500, outside: 0.500, top: 0.750, bottom: 0.750 };
       } else if (pageCount <= 400) {
-        return { inside: 0.500, outside: 0.25, top: 0.25, bottom: 0.25 };
+        return { inside: 0.625, outside: 0.500, top: 0.750, bottom: 0.750 };
       } else if (pageCount <= 600) {
-        return { inside: 0.625, outside: 0.25, top: 0.25, bottom: 0.25 };
+        return { inside: 0.750, outside: 0.500, top: 0.750, bottom: 0.750 };
       } else {
-        return { inside: 0.750, outside: 0.25, top: 0.25, bottom: 0.25 };
+        return { inside: 0.875, outside: 0.500, top: 0.750, bottom: 0.750 };
       }
     }
   },
@@ -37,10 +37,10 @@ export const PLATFORMS: Record<PlatformId, PlatformPreset> = {
       color: 0.002252,
     },
     getMargins: () => ({
-      inside: 0.500,
-      outside: 0.375,
-      top: 0.500,
-      bottom: 0.500
+      inside: 0.625,
+      outside: 0.500,
+      top: 0.750,
+      bottom: 0.750
     })
   },
   lulu: {
@@ -53,10 +53,10 @@ export const PLATFORMS: Record<PlatformId, PlatformPreset> = {
       color: 0.002300
     },
     getMargins: () => ({
-      inside: 0.500,
-      outside: 0.375,
-      top: 0.375,
-      bottom: 0.375
+      inside: 0.625,
+      outside: 0.500,
+      top: 0.750,
+      bottom: 0.750
     })
   },
   d2d: {
@@ -69,10 +69,10 @@ export const PLATFORMS: Record<PlatformId, PlatformPreset> = {
       color: 0.002400
     },
     getMargins: () => ({
-      inside: 0.500,
-      outside: 0.375,
-      top: 0.375,
-      bottom: 0.375
+      inside: 0.625,
+      outside: 0.500,
+      top: 0.750,
+      bottom: 0.750
     })
   }
 };

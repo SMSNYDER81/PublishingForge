@@ -94,6 +94,7 @@ export interface LayoutLine {
   isOrnament?: boolean;
   align?: 'left' | 'center' | 'fancy-frame';
   isFancyFrame?: boolean;
+  isFancyFrameTop?: boolean;
   dropCapChar?: string;
   dropCapLinesCount?: number;
   dropCapColor?: string;
@@ -167,27 +168,27 @@ export function typesetManuscript(
     const titleLines: LayoutLine[] = [];
     // Spacer lines represented by empty strings
     for (let i = 0; i < 4; i++) {
-      titleLines.push({ text: '', isHeading: false });
+      titleLines.push({ text: '', isHeading: false, align: 'center', isLastLineOfParagraph: true });
     }
-    titleLines.push({ text: settings.bookTitle.toUpperCase(), isHeading: true });
+    titleLines.push({ text: settings.bookTitle.toUpperCase(), isHeading: true, align: 'center', isLastLineOfParagraph: true });
     
     if (settings.bookSubtitle) {
-      titleLines.push({ text: '', isHeading: false });
-      titleLines.push({ text: settings.bookSubtitle, isHeading: false });
+      titleLines.push({ text: '', isHeading: false, align: 'center', isLastLineOfParagraph: true });
+      titleLines.push({ text: settings.bookSubtitle, isHeading: false, align: 'center', isLastLineOfParagraph: true });
     }
     
     for (let i = 0; i < 3; i++) {
-      titleLines.push({ text: '', isHeading: false });
+      titleLines.push({ text: '', isHeading: false, align: 'center', isLastLineOfParagraph: true });
     }
-    titleLines.push({ text: 'BY', isHeading: false });
-    titleLines.push({ text: '', isHeading: false });
-    titleLines.push({ text: settings.authorName.toUpperCase(), isHeading: false });
+    titleLines.push({ text: 'BY', isHeading: false, align: 'center', isLastLineOfParagraph: true });
+    titleLines.push({ text: '', isHeading: false, align: 'center', isLastLineOfParagraph: true });
+    titleLines.push({ text: settings.authorName.toUpperCase(), isHeading: false, align: 'center', isLastLineOfParagraph: true });
     
     for (let i = 0; i < 6; i++) {
-      titleLines.push({ text: '', isHeading: false });
+      titleLines.push({ text: '', isHeading: false, align: 'center', isLastLineOfParagraph: true });
     }
     if (settings.publisherName) {
-      titleLines.push({ text: settings.publisherName, isHeading: false });
+      titleLines.push({ text: settings.publisherName, isHeading: false, align: 'center', isLastLineOfParagraph: true });
     }
 
     pagesList.push({
@@ -198,30 +199,37 @@ export function typesetManuscript(
 
   if (settings.includeCopyrightPage) {
     const copyrightLines: LayoutLine[] = [];
-    copyrightLines.push({ text: 'COPYRIGHT PAGE', isHeading: true });
-    copyrightLines.push({ text: '', isHeading: false });
+    copyrightLines.push({ text: 'COPYRIGHT PAGE', isHeading: true, align: 'center', isLastLineOfParagraph: true });
+    copyrightLines.push({ text: '', isHeading: false, align: 'center', isLastLineOfParagraph: true });
     copyrightLines.push({ 
       text: `Copyright © ${settings.copyrightYear || '2026'} by ${settings.authorName || 'Author'}.`, 
-      isHeading: false 
+      isHeading: false,
+      align: 'center',
+      isLastLineOfParagraph: true
     });
-    copyrightLines.push({ text: '', isHeading: false });
+    copyrightLines.push({ text: '', isHeading: false, align: 'center', isLastLineOfParagraph: true });
     
     // Wrap copyright text nicely
     const contentWidthPts = widthPts - inchesToPts(settings.insideMargin) - inchesToPts(settings.outsideMargin);
     const textToWrap = 'All rights reserved. No part of this publication may be reproduced, distributed, or transmitted in any form or by any means, including photocopying, recording, or other electronic or mechanical methods, without the prior written permission of the publisher, except in the case of brief quotations embodied in critical reviews and certain other noncommercial uses permitted by copyright law.';
     const wrappedCopyright = wrapParagraph_internal(textToWrap, contentWidthPts);
     
-    for (const wrapLine of wrappedCopyright) {
-      copyrightLines.push({ text: wrapLine, isHeading: false });
+    for (let li = 0; li < wrappedCopyright.length; li++) {
+      copyrightLines.push({ 
+        text: wrappedCopyright[li], 
+        isHeading: false,
+        align: 'center',
+        isLastLineOfParagraph: li === wrappedCopyright.length - 1 
+      });
     }
     
     if (settings.isbn) {
-      copyrightLines.push({ text: '', isHeading: false });
-      copyrightLines.push({ text: `ISBN: ${settings.isbn}`, isHeading: false });
+      copyrightLines.push({ text: '', isHeading: false, align: 'center', isLastLineOfParagraph: true });
+      copyrightLines.push({ text: `ISBN: ${settings.isbn}`, isHeading: false, align: 'center', isLastLineOfParagraph: true });
     }
     
-    copyrightLines.push({ text: '', isHeading: false });
-    copyrightLines.push({ text: `Published by ${settings.publisherName || 'PublishingForge Printer'}`, isHeading: false });
+    copyrightLines.push({ text: '', isHeading: false, align: 'center', isLastLineOfParagraph: true });
+    copyrightLines.push({ text: `Published by ${settings.publisherName || 'PublishingForge Printer'}`, isHeading: false, align: 'center', isLastLineOfParagraph: true });
 
     pagesList.push({
       pageNumber: pageNumber++,
@@ -244,7 +252,7 @@ export function typesetManuscript(
     const topPaddingLines = Math.max(3, Math.floor((approxLinesPerPage - wrappedDediLines.length) * 0.38));
     
     for (let s = 0; s < topPaddingLines; s++) {
-      dedicationLines.push({ text: '', isHeading: false });
+      dedicationLines.push({ text: '', isHeading: false, align: 'center', isLastLineOfParagraph: true });
     }
     
     // Top Ornaments
@@ -253,27 +261,28 @@ export function typesetManuscript(
       if (settings.chapterOrnament === 'triple-star') topOrnament = '✦   ✦   ✦';
       else if (settings.chapterOrnament === 'floral-leaf') topOrnament = '❦   ❊   ❦';
       else if (settings.chapterOrnament === 'divider-bar') topOrnament = '═══ ❃ ═══';
-      dedicationLines.push({ text: topOrnament, isHeading: false, isOrnament: true, align: 'center' });
-      dedicationLines.push({ text: '', isHeading: false });
+      dedicationLines.push({ text: topOrnament, isHeading: false, isOrnament: true, align: 'center', isLastLineOfParagraph: true });
+      dedicationLines.push({ text: '', isHeading: false, align: 'center', isLastLineOfParagraph: true });
     }
     
-    for (const dLine of wrappedDediLines) {
+    for (let dli = 0; dli < wrappedDediLines.length; dli++) {
       dedicationLines.push({
-        text: dLine,
+        text: wrappedDediLines[dli],
         isHeading: false,
         align: 'center',
         isItalic: true,
-        isDedication: true
+        isDedication: true,
+        isLastLineOfParagraph: dli === wrappedDediLines.length - 1
       });
     }
     
     // Bottom Ornaments
     if (settings.dedicationStyle === 'fancy') {
-      dedicationLines.push({ text: '', isHeading: false });
-      dedicationLines.push({ text: '❧', isHeading: false, isOrnament: true, align: 'center' });
+      dedicationLines.push({ text: '', isHeading: false, align: 'center', isLastLineOfParagraph: true });
+      dedicationLines.push({ text: '❧', isHeading: false, isOrnament: true, align: 'center', isLastLineOfParagraph: true });
     } else if (settings.dedicationStyle === 'poetic') {
-      dedicationLines.push({ text: '', isHeading: false });
-      dedicationLines.push({ text: '❦   ❦   ❦', isHeading: false, isOrnament: true, align: 'center' });
+      dedicationLines.push({ text: '', isHeading: false, align: 'center', isLastLineOfParagraph: true });
+      dedicationLines.push({ text: '❦   ❦   ❦', isHeading: false, isOrnament: true, align: 'center', isLastLineOfParagraph: true });
     }
     
     pagesList.push({
@@ -310,17 +319,25 @@ export function typesetManuscript(
   for (const chap of chapters) {
     let currentLines: LayoutLine[] = [];
 
-    // H1 Chapter header alignment
+    // H1 Chapter header alignment and wrapping
     const alignStyle = settings.chapterTitleAlign || 'center';
     const headingText = alignStyle === 'fancy-frame' ? `[ ${chap.title.toUpperCase()} ]` : chap.title;
-    currentLines.push({ 
-      text: headingText, 
-      isHeading: true,
-      align: alignStyle === 'fancy-frame' ? 'center' : alignStyle,
-      isFancyFrame: alignStyle === 'fancy-frame',
-      chapId: chap.id,
-      isTitle: true
-    });
+    const defaultInsideM = inchesToPts(settings.insideMargin);
+    const defaultOutsideM = inchesToPts(settings.outsideMargin);
+    const contentWidthPts = widthPts - defaultInsideM - defaultOutsideM;
+    const wrappedHeaderLines = wrapParagraph_internal(headingText, contentWidthPts, true);
+
+    for (let hli = 0; hli < wrappedHeaderLines.length; hli++) {
+      currentLines.push({ 
+        text: wrappedHeaderLines[hli], 
+        isHeading: true,
+        align: alignStyle === 'fancy-frame' ? 'center' : alignStyle,
+        isFancyFrame: alignStyle === 'fancy-frame' && hli === wrappedHeaderLines.length - 1,
+        isFancyFrameTop: alignStyle === 'fancy-frame' && hli === 0,
+        chapId: chap.id,
+        isTitle: true
+      });
+    }
 
     if (settings.showOrnament && settings.chapterOrnament !== 'none') {
       let ornamentText = '✦   ✦   ✦';
@@ -417,7 +434,8 @@ export function typesetManuscript(
         }
       } else {
         // Ordinary paragraph layout logic
-        const shouldIndent = settings.paragraphStyle === 'indent' && pIdx > 0;
+        const isMetadata = dropCapPIdx !== -1 && pIdx < dropCapPIdx; // Centered subtitle or location metadata lines!
+        const shouldIndent = settings.paragraphStyle === 'indent' && pIdx > 0 && !isMetadata;
         const displayPrefix = shouldIndent ? '      ' : ''; // indent approximation
         const textToWrap = displayPrefix + pText;
         const wrappedLines = wrapParagraph_internal(textToWrap, contentWidthPts, false);
@@ -427,6 +445,8 @@ export function typesetManuscript(
             text: wrappedLines[li], 
             isHeading: false,
             isLastLineOfParagraph: li === wrappedLines.length - 1,
+            align: isMetadata ? 'center' : 'left', // Center metadata!
+            isItalic: isMetadata, // Make metadata italic for classic literary elegance!
             chapId: chap.id,
             pIdx: pIdx
           });
@@ -454,12 +474,17 @@ export function typesetManuscript(
 
     for (let i = 0; i < currentLines.length; i++) {
       const line = currentLines[i];
+      const isChapterStartPage = line.isHeading && line.isTitle && activePageLines.length === 0;
+      const chapterHeaderDrop = isChapterStartPage ? (heightPts * 0.14) : 0;
       const lineSpacing = line.isHeading ? h1Leading : leading;
 
       const hasTopImg = (interiorImages || []).some(img => img.pageNumber === pageNumber && img.layout === 'top');
       const hasBottomImg = (interiorImages || []).some(img => img.pageNumber === pageNumber && img.layout === 'bottom');
       const overheadHeight = (hasTopImg ? 130 : 0) + (hasBottomImg ? 130 : 0);
-      const availableHeightPts = heightPts - topM - bottomM - 36 - overheadHeight;
+      let availableHeightPts = heightPts - topM - bottomM - 36 - overheadHeight;
+      if (isChapterStartPage) {
+        availableHeightPts -= chapterHeaderDrop;
+      }
 
       if (currentHeightSum + lineSpacing > availableHeightPts) {
         pagesList.push({
@@ -1044,7 +1069,9 @@ export async function compileInteriorPDF(
     }
 
     // Header Setup
-    if (settings.showRunningHeaders && pData.pageNumber > 2) {
+    const isChapterStart = (pData.lines || []).some(l => l.isHeading && l.isTitle);
+    const showHeaderOnPage = settings.showRunningHeaders && pData.pageNumber > 2 && !isChapterStart;
+    if (showHeaderOnPage) {
       const headerTextText = isOdd 
         ? (settings.headerOddText || settings.authorName).toUpperCase()
         : (settings.headerEvenText || settings.bookTitle).toUpperCase();
@@ -1176,6 +1203,10 @@ export async function compileInteriorPDF(
 
     // Lines Typesetting Render Loop
     let cursorY = heightPts - topM - 12 - imageTopHeight;
+    const firstLineLines = pData.lines[0];
+    if (firstLineLines && firstLineLines.isHeading && firstLineLines.isTitle) {
+      cursorY -= (heightPts * 0.14); // Elegant drop for chapter starter pages!
+    }
     const bodySize = settings.bodyFontSize;
     const leading = bodySize * settings.lineSpacing;
     const h1Size = bodySize * 1.8;
@@ -1193,18 +1224,19 @@ export async function compileInteriorPDF(
         }
         cursorY -= h1Leading;
 
-        // Draw double decorative fancy frames rules if enabled
-        if (line.isFancyFrame) {
-          const borderYTop = cursorY + h1Size + 2;
-          const borderYBottom = cursorY - 6;
-          // draw top bar
+        // Draw top decorative fancy frame rule if enabled
+        if (line.isFancyFrameTop) {
+          const borderYTop = cursorY + h1Size + 4;
           page.drawLine({
             start: { x: leftMargin, y: borderYTop },
             end: { x: widthPts - rightMargin, y: borderYTop },
             thickness: 1,
             color: rgb(0.15, 0.15, 0.15),
           });
-          // draw bottom bar
+        }
+        // Draw bottom decorative fancy frame rule if enabled
+        if (line.isFancyFrame) {
+          const borderYBottom = cursorY - 6;
           page.drawLine({
             start: { x: leftMargin, y: borderYBottom },
             end: { x: widthPts - rightMargin, y: borderYBottom },
@@ -1260,7 +1292,9 @@ export async function compileInteriorPDF(
         const words = lineText.trim().split(/\s+/).filter(Boolean);
         const shouldJustify = 
           settings.justification === 'justify' &&
+          !!line.chapId && // Only justify actual chapter body lines (excludes title, copyright, dedication, colophon)
           !line.isLastLineOfParagraph &&
+          line.align !== 'center' &&
           words.length > 1;
 
         if (shouldJustify) {

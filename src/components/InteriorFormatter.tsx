@@ -204,11 +204,36 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
     setFileName('Preloaded Sample Project.txt');
   };
 
+  const cleanBrokenDropCaps = (rawText: string): string => {
+    const lines = rawText.split(/\r?\n/);
+    const cleaned: string[] = [];
+    
+    for (let i = 0; i < lines.length; i++) {
+      const current = lines[i].trim();
+      if (current.length === 1 && current >= 'A' && current <= 'Z') {
+        let nextIdx = i + 1;
+        while (nextIdx < lines.length && !lines[nextIdx].trim()) {
+          nextIdx++;
+        }
+        if (nextIdx < lines.length) {
+          const nextLine = lines[nextIdx].trim();
+          if (nextLine.length > 0 && nextLine.charAt(0) >= 'a' && nextLine.charAt(0) <= 'z') {
+            lines[nextIdx] = current + nextLine;
+            continue;
+          }
+        }
+      }
+      cleaned.push(lines[i]);
+    }
+    return cleaned.join('\n');
+  };
+
   // Helper parsing logic to chop manuscript into structured Chapters
   const parseRawManuscript = (rawText: string): Chapter[] => {
+    const cleanedText = cleanBrokenDropCaps(rawText);
     // Splits text looking for common boundaries like CHAPTER, Act, Section, Prologue, Epilogue, Introduction, Foreword, Preface
     const pattern = /(?:^|\n)(?=(?:Chapter|CHAPTER|Act|ACT|Section|SECTION|Prologue|PROLOGUE|Epilogue|EPILOGUE|Introduction|INTRODUCTION|Foreword|FOREWORD|Preface|PREFACE)\b)/g;
-    const parts = rawText.split(pattern);
+    const parts = cleanedText.split(pattern);
     
     const parsedChapters: Chapter[] = [];
     
@@ -1372,7 +1397,7 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
                     />
 
                     {/* Header page title */}
-                    {settings.showRunningHeaders && pData.pageNumber > 2 && (
+                    {settings.showRunningHeaders && pData.pageNumber > 2 && !pData.lines.some(l => l.isHeading && l.isTitle) && (
                       <div className="text-[9px] uppercase border-b border-gray-100 pb-1 text-center font-bold tracking-wider text-gray-400 absolute top-6 left-0 right-0 px-8 truncate">
                         {isOdd 
                           ? (settings.headerOddText || 'BY AUTHOR').toUpperCase() 
@@ -1382,7 +1407,12 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
                     )}
 
                     {/* Lines mapping visually */}
-                    <div className="h-full flex flex-col justify-start overflow-hidden mt-2 text-xs leading-normal">
+                    <div 
+                      className="h-full flex flex-col justify-start overflow-hidden mt-2 text-xs leading-normal"
+                      style={{
+                        paddingTop: pData.lines.some(l => l.isHeading && l.isTitle) ? '32px' : '0px'
+                      }}
+                    >
                       {pData.inlineImageTop && (
                         <div className="w-full flex flex-col items-center mb-3 pt-1 border-b border-gray-100 pb-1.5 shrink-0">
                           <img 
@@ -1421,8 +1451,8 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
                           if (settings.chapterTitleAlign === 'left') {
                             alignmentClass = 'text-left';
                           } else if (settings.chapterTitleAlign === 'fancy-frame') {
-                            alignmentClass = 'text-center border-t border-b border-indigo-150 py-1 my-2.5 tracking-wider text-indigo-600 font-serif uppercase';
-                            borderClass = 'text-[10px] font-black';
+                            alignmentClass = 'text-center text-indigo-600 font-serif uppercase tracking-wider py-1 my-1';
+                            borderClass = `text-[10px] font-black ${line.isFancyFrameTop ? 'border-t border-indigo-150 pt-2' : ''} ${line.isFancyFrame ? 'border-b border-indigo-150 pb-2 mb-3' : ''}`;
                           }
                           return (
                             <div 
