@@ -6,7 +6,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Palette, Info, ArrowLeft, Download, Eye, EyeOff, Layout, FileImage, 
-  HelpCircle, CheckCircle2, AlertTriangle, ShieldCheck 
+  HelpCircle, CheckCircle2, AlertTriangle, ShieldCheck, Maximize2, Minimize2 
 } from 'lucide-react';
 import { CoverSettings, PlatformId, TrimSizeId, BindingType, PaperColor } from '../types';
 import { PLATFORMS, TRIM_SIZES } from '../utils/presets';
@@ -47,6 +47,7 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
     barcodePrice: '19.99'
   });
 
+  const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [showGuides, setShowGuides] = useState<boolean>(true);
   const [frontImage, setFrontImage] = useState<File | null>(null);
   const [frontImgUrl, setFrontImgUrl] = useState<string>('');
@@ -597,8 +598,8 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Fixed drawing width
-    const drawWidth = 720;
+    // Variable drawing width depending on expansion state (isExpanded expands from 720px to 1080px for high-precision edits)
+    const drawWidth = isExpanded ? 1080 : 720;
     const drawHeight = Math.round(drawWidth * (totalFlatHeight / totalFlatWidth));
     canvas.width = drawWidth;
     canvas.height = drawHeight;
@@ -802,7 +803,7 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
     }
   }, [
     settings, totalFlatWidth, totalFlatHeight, showGuides, frontImgUrl, backImgUrl,
-    frontImgLoaded, backImgLoaded, selectedImage, fullWrapImgUrl, fullWrapImgLoaded
+    frontImgLoaded, backImgLoaded, selectedImage, fullWrapImgUrl, fullWrapImgLoaded, isExpanded
   ]);
 
   // Handle Cover Downloading
@@ -825,7 +826,10 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
   };
 
   return (
-    <div id="cover-builder-main-container" className="max-w-6xl mx-auto px-4 py-6">
+    <div 
+      id="cover-builder-main-container" 
+      className={`mx-auto px-4 py-6 transition-all duration-300 ${isExpanded ? 'max-w-7xl' : 'max-w-6xl'}`}
+    >
       
       {/* Header back bar */}
       <div className="flex items-center justify-between mb-6 border-b border-gray-200 pb-4">
@@ -839,10 +843,10 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
         <span className="text-xs font-mono text-gray-400">BUILD COMPONENT v1.02</span>
       </div>
 
-      <div className="grid lg:grid-cols-12 gap-8 items-start">
+      <div className={`grid ${isExpanded ? 'grid-cols-1' : 'lg:grid-cols-12'} gap-8 items-start transition-all duration-300`}>
         
-        {/* LEFT / SETTINGS COLUMN: 5 columns */}
-        <div className="lg:col-span-5 space-y-6">
+        {/* LEFT / SETTINGS COLUMN */}
+        <div className={`${isExpanded ? 'order-2 grid md:grid-cols-2 lg:grid-cols-3 gap-6 space-y-0' : 'lg:col-span-5 space-y-6'} transition-all duration-300`}>
           {/* AI Creative Assistant Copy studio */}
           <AIAssistant 
             currentBookTitle={settings.spineTitle || ''}
@@ -1470,8 +1474,8 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
 
         </div>
 
-        {/* RIGHT / PREVIEW COLUMN: 7 columns */}
-        <div className="lg:col-span-7 space-y-6">
+        {/* RIGHT / PREVIEW COLUMN */}
+        <div className={`${isExpanded ? 'order-1 w-full' : 'lg:col-span-7'} space-y-6 transition-all duration-300`}>
           
           {/* SIZER SPECIFICATION HUD */}
           <div className="bg-gray-900 text-white rounded-xl p-5 font-mono shadow-sm border border-gray-800">
@@ -1510,18 +1514,43 @@ export default function CoverBuilder({ onBack }: CoverBuilderProps) {
 
           {/* SPREAD PREVIEW COVER CONTAINER */}
           <div className="bg-slate-100 rounded-xl border border-gray-200 p-4 md:p-6 shadow-inner flex flex-col items-center">
-            <div className="w-full flex items-center justify-between mb-3 text-xs text-slate-500 font-mono">
+            <div className="w-full flex flex-wrap items-center justify-between gap-2 mb-3 text-xs text-slate-500 font-mono">
               <span className="flex items-center gap-1.5 font-bold">
                 <Eye className="w-4 h-4 text-indigo-600" />
                 Interactive Wrap Canvas Preview
               </span>
-              <button 
-                onClick={() => setShowGuides(!showGuides)}
-                className="flex items-center gap-1 border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded px-2.5 py-1"
-              >
-                {showGuides ? <EyeOff className="w-3 px-0.5 h-3" /> : <Eye className="w-3 px-0.5 h-3" />}
-                Guides Template: {showGuides ? 'On' : 'Off'}
-              </button>
+              <div className="flex items-center gap-2">
+                <button 
+                  type="button"
+                  onClick={() => setShowGuides(!showGuides)}
+                  className="flex items-center gap-1 border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded px-2.5 py-1 cursor-pointer transition-colors"
+                >
+                  {showGuides ? <EyeOff className="w-3 px-0.5 h-3" /> : <Eye className="w-3 px-0.5 h-3" />}
+                  Guides Template: {showGuides ? 'On' : 'Off'}
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setIsExpanded(!isExpanded)}
+                  className={`flex items-center gap-1.5 border rounded px-2.5 py-1 cursor-pointer transition-all ${
+                    isExpanded 
+                      ? 'bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700' 
+                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                  }`}
+                  title={isExpanded ? "Restore split screen view" : "Expand preview canvas to full page width"}
+                >
+                  {isExpanded ? (
+                    <>
+                      <Minimize2 className="w-3.5 h-3.5" />
+                      <span>Split View</span>
+                    </>
+                  ) : (
+                    <>
+                      <Maximize2 className="w-3.5 h-3.5" />
+                      <span>Full Page</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
             {/* Canvas viewport */}
