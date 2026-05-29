@@ -112,6 +112,10 @@ export interface LayoutPage {
   pageNumber: number;
   chapterTitle?: string;
   lines: LayoutLine[];
+  isImagePage?: boolean;
+  imageObj?: any;
+  inlineImageTop?: any;
+  inlineImageBottom?: any;
 }
 
 export function sanitizeForWinAnsi(text: string): string {
@@ -139,7 +143,8 @@ export function sanitizeForWinAnsi(text: string): string {
 export function typesetManuscript(
   chapters: Chapter[],
   settings: InteriorSettings,
-  charWidthApprox: number = 0.42 // approximation helper when measuring text offline / canvas
+  charWidthApprox: number = 0.42, // approximation helper when measuring text offline / canvas
+  interiorImages?: any[]
 ): LayoutPage[] {
   const trimSize = TRIM_SIZES.find(t => t.id === settings.trimId) || TRIM_SIZES[3]; // default 6x9
   const widthInches = trimSize.id === 'custom' ? settings.customWidth : trimSize.width;
@@ -443,7 +448,6 @@ export function typesetManuscript(
     // Pack layout lines into physical pages
     const topM = inchesToPts(settings.topMargin);
     const bottomM = inchesToPts(settings.bottomMargin);
-    const availableHeightPts = heightPts - topM - bottomM - 36; // leave room for headers/footers
 
     let activePageLines: LayoutLine[] = [];
     let currentHeightSum = 0;
@@ -451,6 +455,11 @@ export function typesetManuscript(
     for (let i = 0; i < currentLines.length; i++) {
       const line = currentLines[i];
       const lineSpacing = line.isHeading ? h1Leading : leading;
+
+      const hasTopImg = (interiorImages || []).some(img => img.pageNumber === pageNumber && img.layout === 'top');
+      const hasBottomImg = (interiorImages || []).some(img => img.pageNumber === pageNumber && img.layout === 'bottom');
+      const overheadHeight = (hasTopImg ? 130 : 0) + (hasBottomImg ? 130 : 0);
+      const availableHeightPts = heightPts - topM - bottomM - 36 - overheadHeight;
 
       if (currentHeightSum + lineSpacing > availableHeightPts) {
         pagesList.push({
@@ -524,6 +533,40 @@ export function typesetManuscript(
       pageNumber: pageNumber++,
       lines: colophonLines
     });
+  }
+
+  // Post-process full-page images
+  const fullPageImages = (interiorImages || [])
+    .filter(img => img.layout === 'full-page')
+    .sort((a, b) => a.pageNumber - b.pageNumber);
+
+  for (const img of fullPageImages) {
+    const targetIndex = Math.min(pagesList.length, Math.max(0, img.pageNumber - 1));
+    pagesList.splice(targetIndex, 0, {
+      pageNumber: 0, // reassigned below
+      chapterTitle: 'Illustration',
+      isImagePage: true,
+      imageObj: img,
+      lines: []
+    });
+  }
+
+  // Re-assign logical/physical page numbers
+  pagesList.forEach((p, idx) => {
+    p.pageNumber = idx + 1;
+  });
+
+  // Attach inline images based on the finalized page numbers
+  const inlineImages = (interiorImages || []).filter(img => img.layout !== 'full-page');
+  for (const img of inlineImages) {
+    const page = pagesList.find(p => p.pageNumber === img.pageNumber);
+    if (page) {
+      if (img.layout === 'top') {
+        page.inlineImageTop = img;
+      } else if (img.layout === 'bottom') {
+        page.inlineImageBottom = img;
+      }
+    }
   }
 
   return pagesList;
@@ -878,7 +921,8 @@ export async function compileCoverPDF(
 export async function compileInteriorPDF(
   chapters: Chapter[],
   settings: InteriorSettings,
-  onProgress?: (val: number) => void
+  onProgress?: (val: number) => void,
+  interiorImages?: any[]
 ): Promise<Blob> {
   const pdfDoc = await PDFDocument.create();
 
@@ -889,8 +933,8 @@ export async function compileInteriorPDF(
   const widthPts = inchesToPts(widthInches);
   const heightPts = inchesToPts(heightInches);
 
-  // Generate layouts
-  const renderedPages = typesetManuscript(chapters, settings);
+  // Generate layouts with images Included!
+  const renderedPages = typesetManuscript(chapters, settings, 0.42, interiorImages);
 
   // Load standard standard fonts
   let fontRegular = await pdfDoc.embedFont(StandardFonts.TimesRoman);
@@ -927,6 +971,78 @@ export async function compileInteriorPDF(
     const leftMargin = isOdd ? insideM : outsideM;
     const rightMargin = isOdd ? outsideM : insideM;
 
+    // Full Page Image Insertion
+    if (pData.isImagePage && pData.imageObj) {
+      const imgConf = pData.imageObj;
+      if (imgConf.file) {
+        try {
+          const imgBytes = await imgConf.file.arrayBuffer();
+          const embedImg = imgConf.file.type === 'image/png'
+            ? await pdfDoc.embedPng(imgBytes)
+            : await pdfDoc.embedJpg(imgBytes);
+
+          const printableW = widthPts - leftMargin - rightMargin;
+          const printableH = heightPts - topM - bottomM;
+
+          const ratio = embedImg.width / embedImg.height;
+          const pctScale = (imgConf.scale || 100) / 100;
+          let drawW = printableW * pctScale;
+          let drawH = drawW / ratio;
+
+          if (drawH > printableH * pctScale) {
+            drawH = printableH * pctScale;
+            drawW = drawH * ratio;
+          }
+
+          const drawX = leftMargin + (printableW - drawW) / 2;
+          const drawY = bottomM + (printableH - drawH) / 2;
+
+          page.drawImage(embedImg, {
+            x: drawX,
+            y: drawY,
+            width: drawW,
+            height: drawH
+          });
+
+          if (imgConf.caption && imgConf.caption.trim()) {
+            const captionText = sanitizeForWinAnsi(imgConf.caption);
+            const capSize = 9;
+            const capWidth = fontItalic.widthOfTextAtSize(captionText, capSize);
+            const capX = (widthPts - capWidth) / 2;
+            page.drawText(captionText, {
+              x: capX,
+              y: Math.max(bottomM - 12, drawY - 18),
+              size: capSize,
+              font: fontItalic,
+              color: rgb(0.35, 0.35, 0.35)
+            });
+          }
+        } catch (err) {
+          console.error("Failed to embed full-page image:", err);
+        }
+      }
+
+      // Draw footer page number
+      if (pData.pageNumber > 0) {
+        const pageStr = String(pData.pageNumber);
+        const pNumWidth = fontRegular.widthOfTextAtSize(pageStr, 9);
+        let pNumX = (widthPts - pNumWidth) / 2;
+        if (settings.pageNumberPosition === 'bottom-outer') {
+          pNumX = isOdd ? (widthPts - rightMargin - pNumWidth - 4) : (leftMargin + 4);
+        } else if (settings.pageNumberPosition === 'bottom-inner') {
+          pNumX = isOdd ? (leftMargin + 4) : (widthPts - rightMargin - pNumWidth - 4);
+        }
+        page.drawText(pageStr, {
+          x: pNumX,
+          y: bottomM - 16,
+          size: 9,
+          font: fontRegular,
+          color: rgb(0.2, 0.2, 0.2),
+        });
+      }
+      continue; // Skip the rest of headers/text loop
+    }
+
     // Header Setup
     if (settings.showRunningHeaders && pData.pageNumber > 2) {
       const headerTextText = isOdd 
@@ -953,8 +1069,113 @@ export async function compileInteriorPDF(
       });
     }
 
+    // Top Inline Image Insertion
+    let imageTopHeight = 0;
+    if (pData.inlineImageTop && pData.inlineImageTop.file) {
+      try {
+        const imgConf = pData.inlineImageTop;
+        const imgBytes = await imgConf.file.arrayBuffer();
+        const embedImg = imgConf.file.type === 'image/png'
+          ? await pdfDoc.embedPng(imgBytes)
+          : await pdfDoc.embedJpg(imgBytes);
+
+        const printableW = widthPts - leftMargin - rightMargin;
+        const ratio = embedImg.width / embedImg.height;
+
+        const pctScale = (imgConf.scale || 100) / 100;
+        const maxW = printableW * pctScale;
+        let drawW = maxW;
+        let drawH = drawW / ratio;
+
+        if (drawH > 105) {
+          drawH = 105;
+          drawW = drawH * ratio;
+        }
+
+        const drawX = leftMargin + (printableW - drawW) / 2;
+        const drawY = heightPts - topM - 12 - drawH;
+
+        page.drawImage(embedImg, {
+          x: drawX,
+          y: drawY,
+          width: drawW,
+          height: drawH
+        });
+
+        let captionSp = 0;
+        if (imgConf.caption && imgConf.caption.trim()) {
+          const captionText = sanitizeForWinAnsi(imgConf.caption);
+          const capSize = 7.5;
+          const capWidth = fontItalic.widthOfTextAtSize(captionText, capSize);
+          const capX = (widthPts - capWidth) / 2;
+          page.drawText(captionText, {
+            x: capX,
+            y: drawY - 9,
+            size: capSize,
+            font: fontItalic,
+            color: rgb(0.35, 0.35, 0.35)
+          });
+          captionSp = 12;
+        }
+
+        imageTopHeight = drawH + 18 + captionSp;
+      } catch (err) {
+        console.error("Failed to embed top inline image:", err);
+      }
+    }
+
+    // Bottom Inline Image Insertion
+    if (pData.inlineImageBottom && pData.inlineImageBottom.file) {
+      try {
+        const imgConf = pData.inlineImageBottom;
+        const imgBytes = await imgConf.file.arrayBuffer();
+        const embedImg = imgConf.file.type === 'image/png'
+          ? await pdfDoc.embedPng(imgBytes)
+          : await pdfDoc.embedJpg(imgBytes);
+
+        const printableW = widthPts - leftMargin - rightMargin;
+        const ratio = embedImg.width / embedImg.height;
+
+        const pctScale = (imgConf.scale || 100) / 100;
+        const maxW = printableW * pctScale;
+        let drawW = maxW;
+        let drawH = drawW / ratio;
+
+        if (drawH > 105) {
+          drawH = 105;
+          drawW = drawH * ratio;
+        }
+
+        const drawX = leftMargin + (printableW - drawW) / 2;
+        const drawY = bottomM;
+
+        page.drawImage(embedImg, {
+          x: drawX,
+          y: drawY,
+          width: drawW,
+          height: drawH
+        });
+
+        if (imgConf.caption && imgConf.caption.trim()) {
+          const captionText = sanitizeForWinAnsi(imgConf.caption);
+          const capSize = 7.5;
+          const capWidth = fontItalic.widthOfTextAtSize(captionText, capSize);
+          const capX = (widthPts - capWidth) / 2;
+          page.drawText(captionText, {
+            x: capX,
+            y: drawY + drawH + 3,
+            size: capSize,
+            font: fontItalic,
+            color: rgb(0.35, 0.35, 0.35)
+          });
+        }
+      } catch (err) {
+        console.error("Failed to embed bottom inline image:", err);
+      }
+    }
+
     // Lines Typesetting Render Loop
-    let cursorY = heightPts - topM - 12;
+    let cursorY = heightPts - topM - 12 - imageTopHeight;
     const bodySize = settings.bodyFontSize;
     const leading = bodySize * settings.lineSpacing;
     const h1Size = bodySize * 1.8;

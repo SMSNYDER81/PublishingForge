@@ -8,7 +8,7 @@ import mammoth from 'mammoth';
 import { 
   FileText, Upload, Settings, BookOpen, Scaling, Type, Download, 
   HelpCircle, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Sparkles,
-  Maximize2, Minimize2
+  Maximize2, Minimize2, Image as ImageIcon, Plus, Trash2, ImagePlus
 } from 'lucide-react';
 import { InteriorSettings, Chapter } from '../types';
 import { PLATFORMS, TRIM_SIZES, DEFAULT_BOOK_CONTENT } from '../utils/presets';
@@ -21,6 +21,7 @@ interface InteriorFormatterProps {
 
 export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
   // Parser and Settings state
+  const [interiorImages, setInteriorImages] = useState<any[]>([]);
   const [settings, setSettings] = useState<InteriorSettings>({
     platform: 'kdp',
     trimId: '6x9',
@@ -333,7 +334,7 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
   };
 
   // Generate typesetting page layout preview
-  const previewPages: LayoutPage[] = typesetManuscript(chapters, settings, 0.45);
+  const previewPages: LayoutPage[] = typesetManuscript(chapters, settings, 0.45, interiorImages);
   const activePage = previewPages[previewPageIndex] || previewPages[0];
 
   // Run audit checks against industry standard KDP/Ingram constraints
@@ -364,7 +365,7 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
     try {
       const pdfBlob = await compileInteriorPDF(chapters, settings, (p) => {
         setExportProgress(Math.max(10, p));
-      });
+      }, interiorImages);
       setExportProgress(100);
 
       const url = URL.createObjectURL(pdfBlob);
@@ -1043,6 +1044,152 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
             </div>
           </div>
 
+          {/* Images & Illustrations Section */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm space-y-4 animate-fadeIn">
+            <h3 className="text-sm font-mono text-gray-500 uppercase tracking-widest border-b border-gray-100 pb-2 flex items-center gap-2">
+              <ImageIcon className="w-4 h-4 text-emerald-600" />
+              Images &amp; Illustrations
+            </h3>
+
+            <div className="space-y-3">
+              <label className="block text-[10px] font-mono font-bold text-gray-400 uppercase tracking-wider">ADD ILLUSTRATION</label>
+              <div className="flex gap-2">
+                <label className="flex-1 flex items-center justify-center gap-1.5 bg-slate-50 hover:bg-slate-100 border border-dashed border-gray-300 rounded p-3 cursor-pointer text-xs font-mono font-bold text-slate-700 transition active:scale-[0.98]">
+                  <ImagePlus className="w-4 h-4 text-emerald-600" strokeWidth={2} />
+                  Upload Jpeg/Png Image
+                  <input
+                    type="file"
+                    accept=".jpg,.jpeg,.png"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const newImg = {
+                        id: `img-${Date.now()}`,
+                        name: file.name,
+                        file: file,
+                        url: URL.createObjectURL(file),
+                        pageNumber: previewPageIndex + 1, // anchor to current page by default!
+                        layout: 'full-page', // full-page by default
+                        scale: 100,
+                        caption: ''
+                      };
+                      setInteriorImages(p => [...p, newImg]);
+                    }}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+              <p className="text-[10px] text-gray-405 leading-normal font-mono">
+                Illustrations can be placed as dedicated Full-Page plates or aligned dynamically inside content at the top or bottom boundaries of pages.
+              </p>
+            </div>
+
+            {interiorImages.length > 0 && (
+              <div className="space-y-3.5 pt-3 border-t border-gray-150">
+                <span className="block text-[10px] font-bold text-gray-400 font-mono uppercase tracking-wider">
+                  MANAGED ILLUSTRATIONS ({interiorImages.length})
+                </span>
+                
+                <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                  {interiorImages.map((img) => (
+                    <div key={img.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2.5 relative">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setInteriorImages(p => p.filter(x => x.id !== img.id));
+                        }}
+                        className="absolute top-2 right-2 text-gray-400 hover:text-rose-600 p-1 rounded hover:bg-slate-100 transition"
+                        title="Remove Image"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+
+                      {/* Image Thumbnail Header */}
+                      <div className="flex gap-2.5 items-center">
+                        <img 
+                          src={img.url} 
+                          alt="Thumbnail" 
+                          className="w-10 h-10 object-cover bg-white rounded border border-gray-200 shrink-0" 
+                        />
+                        <div className="min-w-0 flex-1 leading-tight">
+                          <p className="text-[11px] font-bold text-gray-800 truncate pr-5 font-mono">{img.name}</p>
+                          <span className="text-[9px] text-gray-405 font-mono uppercase">
+                            Size: {img.file ? (img.file.size / 1024).toFixed(0) : '0'} KB
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Config Grid */}
+                      <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                        <div>
+                          <label className="block text-gray-400 mb-0.5 uppercase font-bold tracking-tight">PAGE ANCHOR</label>
+                          <input 
+                            type="number"
+                            min="1"
+                            max={previewPages.length}
+                            value={img.pageNumber}
+                            onChange={(e) => {
+                              const val = Math.max(1, parseInt(e.target.value) || 1);
+                              setInteriorImages(prev => prev.map(x => x.id === img.id ? { ...x, pageNumber: val } : x));
+                            }}
+                            className="w-full bg-white border border-gray-200 p-0.5 rounded text-center font-bold"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-gray-400 mb-0.5 uppercase font-bold tracking-tight">LAYOUT ALIGN</label>
+                          <select 
+                            value={img.layout}
+                            onChange={(e) => {
+                              setInteriorImages(prev => prev.map(x => x.id === img.id ? { ...x, layout: e.target.value as any } : x));
+                            }}
+                            className="w-full bg-white border border-gray-200 p-0.5 rounded text-[9px]"
+                          >
+                            <option value="full-page">Dedicated Full-Page</option>
+                            <option value="top">Inline Top Margins</option>
+                            <option value="bottom">Inline Bottom Margins</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Scale and Caption sliders */}
+                      <div className="space-y-1.5 font-mono text-[10px]">
+                        <div className="flex justify-between text-gray-400">
+                          <span className="uppercase font-bold tracking-tight">SCALE BOUNDS</span>
+                          <span className="font-bold text-gray-700">{img.scale}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="40"
+                          max="100"
+                          step="5"
+                          value={img.scale}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 100;
+                            setInteriorImages(p => p.map(x => x.id === img.id ? { ...x, scale: val } : x));
+                          }}
+                          className="w-full accent-emerald-600 h-1 rounded cursor-pointer bg-gray-205"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[9px] font-mono text-gray-400 mb-0.5 uppercase font-bold tracking-tight">ILLUSTRATION CAPTION</label>
+                        <input
+                          type="text"
+                          value={img.caption}
+                          placeholder="e.g. Plate I: Sunrise over the highlands."
+                          onChange={(e) => {
+                            setInteriorImages(p => p.map(x => x.id === img.id ? { ...x, caption: e.target.value } : x));
+                          }}
+                          className="w-full bg-white border border-gray-200 p-1 rounded text-[10px] text-gray-700 italic placeholder:not-italic focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
         </div>
 
         {/* RIGHT COLUMN: visual book preview */}
@@ -1153,6 +1300,53 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
                   ? '#F4EFE6' 
                   : '#FFFFFF';
 
+                // DEDICATED FULL-PAGE ILLUSTRATION CARD SHORT-CIRCUIT
+                if (pData.isImagePage && pData.imageObj) {
+                  return (
+                    <div 
+                      id={`page-card-${pData.pageNumber}`}
+                      className="rounded shadow-md relative border border-gray-200 overflow-hidden text-center transition-all duration-300 flex flex-col justify-between"
+                      style={{
+                        width: '320px',
+                        height: '460px',
+                        backgroundColor: paperBgColor,
+                        paddingLeft: useLeftPadding,
+                        paddingRight: useRightPadding,
+                        paddingTop: `${Math.max(25, settings.topMargin * 40)}px`,
+                        paddingBottom: `${Math.max(25, settings.bottomMargin * 40)}px`,
+                      }}
+                    >
+                      <div 
+                        className="absolute top-0 bottom-0 w-1.5 bg-yellow-600/10 pointer-events-none"
+                        style={{
+                          left: side === 'left' ? 'auto' : side === 'right' ? '0px' : isOdd ? '0px' : 'auto',
+                          right: side === 'left' ? '0px' : side === 'right' ? 'auto' : isOdd ? 'auto' : '0px',
+                        }}
+                      />
+
+                      <div className="flex-1 flex flex-col items-center justify-center p-2">
+                        <img 
+                          src={pData.imageObj.url} 
+                          alt={pData.imageObj.name}
+                          className="object-contain shadow-sm rounded max-w-full max-h-[220px]"
+                          style={{
+                            width: `${pData.imageObj.scale || 100}%`
+                          }}
+                        />
+                        {pData.imageObj.caption && (
+                          <p className="text-[10px] italic text-gray-500 mt-3 font-serif line-clamp-2 px-4 leading-normal">
+                            {pData.imageObj.caption}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="text-center text-[10px] font-bold text-gray-400 mt-2">
+                        {pData.pageNumber}
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
                   <div 
                     id={`page-card-${pData.pageNumber}`}
@@ -1189,6 +1383,25 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
 
                     {/* Lines mapping visually */}
                     <div className="h-full flex flex-col justify-start overflow-hidden mt-2 text-xs leading-normal">
+                      {pData.inlineImageTop && (
+                        <div className="w-full flex flex-col items-center mb-3 pt-1 border-b border-gray-100 pb-1.5 shrink-0">
+                          <img 
+                            src={pData.inlineImageTop.url} 
+                            alt={pData.inlineImageTop.name}
+                            className="object-contain rounded"
+                            style={{
+                              maxHeight: '75px',
+                              width: `${pData.inlineImageTop.scale || 100}%`
+                            }}
+                          />
+                          {pData.inlineImageTop.caption && (
+                            <p className="text-[8px] italic text-gray-400 text-center font-serif mt-1 leading-tight px-2 max-w-full">
+                              {pData.inlineImageTop.caption}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
                       {pData.lines.map((line, lIdx) => {
                         const isEditable = !!line.chapId;
                         const editStyleClass = isEditable 
@@ -1303,6 +1516,25 @@ export default function InteriorFormatter({ onBack }: InteriorFormatterProps) {
                           );
                         }
                       })}
+
+                      {pData.inlineImageBottom && (
+                        <div className="w-full flex flex-col items-center mt-auto border-t border-gray-100 pt-1.5 shrink-0">
+                          <img 
+                            src={pData.inlineImageBottom.url} 
+                            alt={pData.inlineImageBottom.name}
+                            className="object-contain rounded"
+                            style={{
+                              maxHeight: '75px',
+                              width: `${pData.inlineImageBottom.scale || 100}%`
+                            }}
+                          />
+                          {pData.inlineImageBottom.caption && (
+                            <p className="text-[8px] italic text-gray-400 text-center font-serif mt-1 leading-tight px-2 max-w-full">
+                              {pData.inlineImageBottom.caption}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* Footer Page Number aligned centered */}
